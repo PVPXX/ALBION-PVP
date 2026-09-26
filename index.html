@@ -14953,6 +14953,15 @@ let suppressSyncPush = false;
 let syncPushTimer = null;
 let lastPushedSyncJSON = null;
 let syncListenerAttached = false;
+/* Se pone en true recién cuando llega el PRIMER snapshot de Firebase (o se
+   confirma que la base está vacía) — hasta entonces, scheduleSyncPush() no
+   manda nada. Esto evita un bug real: si se dejara subir apenas carga la
+   página, en una conexión lenta el primer autoguardado (con la copia local
+   de ESTE dispositivo, que puede estar vieja) podía llegar a subirse ANTES
+   de que llegara la versión compartida real — pisándola por completo. Con
+   este freno, este dispositivo primero se pone al día con lo que ya había,
+   y solo después empieza a mandar sus propios cambios. */
+let syncReady = false;
 
 function buildSyncPayload() {
   const payload = {};
@@ -15003,7 +15012,7 @@ function pushSyncStateNow() {
 }
 
 function scheduleSyncPush() {
-  if (!FIREBASE_ENABLED || suppressSyncPush) return;
+  if (!FIREBASE_ENABLED || suppressSyncPush || !syncReady) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(pushSyncStateNow, 500);
 }
@@ -15012,8 +15021,10 @@ function scheduleSyncPush() {
    snapshot decide el arranque: si Firebase ya tenía datos del gremio
    (caso normal), este dispositivo los adopta; si Firebase está vacío
    (recién configurado), este dispositivo sube lo que ya tenía como punto
-   de partida. De ahí en más, cualquier cambio que llegue de OTRO
-   dispositivo se aplica en vivo sin recargar la página. */
+   de partida. Hasta que ese primer snapshot llega (o falla), scheduleSyncPush()
+   queda frenado por syncReady — ver el comentario ahí arriba. De ahí en
+   más, cualquier cambio que llegue de OTRO dispositivo se aplica en vivo
+   sin recargar la página. */
 function initFirebaseSync() {
   if (!FIREBASE_ENABLED || syncListenerAttached) return;
   const db = getFirebaseDb();
@@ -15026,6 +15037,7 @@ function initFirebaseSync() {
       first = false;
       if (data) applyRemoteState(data);
       else pushSyncStateNow();
+      syncReady = true;
       return;
     }
     applyRemoteState(data);
