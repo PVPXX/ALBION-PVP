@@ -757,6 +757,21 @@
   }
   .my-build-tag-add:hover{border-color:var(--red-bright);color:var(--red-bright);}
   .my-build-add-btn{margin-top:2px;}
+  .my-builds-add-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px;}
+
+  /* ---------- Builds grupales dentro de "Mis builds" ---------- */
+  .group-build-card{--accent:#4f8ff0;cursor:pointer;}
+  .group-build-summary{margin-bottom:12px;}
+  .group-build-count{font-size:13px;color:var(--white);font-weight:700;margin-bottom:8px;}
+  .group-build-roles{display:flex;flex-wrap:wrap;gap:6px;}
+  .group-build-role-chip{
+    display:inline-flex;align-items:center;gap:3px;
+    background:color-mix(in srgb, var(--accent, var(--red)) 22%, transparent);
+    border:1px solid var(--accent, var(--red));color:var(--white);
+    font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;
+    padding:3px 8px;border-radius:12px;
+  }
+  .back-row{margin-bottom:12px;}
 
   /* ---------- Pestaña de Balance de jugadores ---------- */
   .balance-panel .summary-strip{margin-bottom:20px;}
@@ -12591,18 +12606,21 @@ const ZVZ_VARIANTS = {
   brawl: { label: 'Brawl', icon: '🥊', desc: 'Meta ago-2026 (Radiant Wilds): combate cerrado y sostenido — el grupo se pega y satura con Carving Sword, Double Bladed Staff e Infernal Scythe (las tres siguen confirmadas S-Tier).' },
 };
 
+/* Desde la unificación de Composición/Solitario/Avalón en una sola pestaña
+   "Builds" (ver más abajo), MODES solo describe las 3 secciones de primer
+   nivel que quedan. Las plantillas de arma+rol de cada modalidad vieja
+   (zvz/grupal/estatica/avalon_*) se conservan igual en TEMPLATES — ahí las
+   usa buildTemplateBar() como puntos de partida rápidos dentro de Builds. */
 const MODES = {
-  zvz: { label: 'ZVZ', icon: '⚔️', desc: 'Grupos de 20 — hasta 4 grupos por evento', max: 20 },
-  grupal: { label: 'Grupales', icon: '🛡️', desc: 'Comp fija "Azul/Dorado" para contenido en grupo — 6 jugadores', max: 6 },
-  estatica: { label: 'Estática', icon: '⭐', desc: 'Mazmorra estática de gremio — hasta 9 jugadores', max: 9 },
-  solo_pve: { label: 'PvE', icon: '🌲', desc: 'Builds para jugar en solitario contra el entorno — farmeo, mazmorras solo y recolección con defensa. Meta ago-2026 (Radiant Wilds), estimaciones propias en base a guías de la comunidad — no son datos oficiales.', max: null },
-  solo_pvp: { label: 'PvP', icon: '🩸', desc: 'Builds para ganqueo, duelos y roaming en solitario. Meta ago-2026 (Radiant Wilds), verificado contra los parches de balance hasta jun-2026 — el parche de jul-2026 no se pudo confirmar en detalle.', max: null },
-  avalon_azul: { label: 'Azul', icon: '🔵', desc: 'Cofres Azules de los Caminos Avalonianos — contenido en escuadra reducida (hasta 4), botín de rareza intermedia. Meta ago-2026 (Radiant Wilds), estimación propia en base a guías de la comunidad — no son datos oficiales.', max: 4 },
-  avalon_dorado: { label: 'Dorado', icon: '🟡', desc: 'Cofre Dorado de los Caminos Avalonianos — jefe de mundo abierto, conviene grupo de gremio (7) para abrirlo rápido. Meta ago-2026 (Radiant Wilds), estimación propia en base a guías de la comunidad — no son datos oficiales.', max: 7 },
-  balance: { label: 'Balance', icon: '💰', desc: 'Saldo de plata por jugador — sumá, restá y consultá el balance de cada miembro del gremio.', max: null },
-  builds: { label: 'Builds', icon: '📚', desc: '"Mis builds": armá y guardá las builds propias del gremio, sin límite, con etiquetas para buscarlas. Más abajo, el catálogo de referencia con todas las builds de la herramienta — arma + set completo, filtrable por rol o tipo de arma y copiable para Discord (ese catálogo no es editable).', max: null },
-  backups: { label: 'Respaldos', icon: '🗄️', desc: 'Historial de respaldos exportados con "⬇ Exportar todo" desde este navegador — solo visible para admin.', max: null },
+  builds: { label: 'Builds', icon: '📚', desc: '"Mis builds": armá y guardá las builds propias del gremio — individuales (arma + equipo) o grupales (roster completo, del tamaño que quieras) — sin límite, con etiquetas para buscarlas. Más abajo, el catálogo de referencia con todas las builds de la herramienta — arma + set completo, filtrable por rol o tipo de arma y copiable para Discord (ese catálogo no es editable).' },
+  balance: { label: 'Balance', icon: '💰', desc: 'Saldo de plata por jugador — sumá, restá y consultá el balance de cada miembro del gremio.' },
+  backups: { label: 'Respaldos', icon: '🗄️', desc: 'Historial de respaldos exportados con "⬇ Exportar todo" desde este navegador — solo visible para admin.' },
 };
+/* Tope de jugadores para una build grupal — antes cada modalidad tenía su
+   propio máximo fijo (20 ZVZ, 6 Grupales, 9 Estática, 4/7 Avalón); ahora
+   cualquier build grupal puede crecer hasta este único tope, sin importar
+   para qué contenido se arme. */
+const GROUP_BUILD_MAX = 60;
 
 /* ---------------- Build en solitario (PvE / PvP) ----------------
    Una sola tarjeta por pestaña, pensada como punto de partida totalmente
@@ -12663,64 +12681,40 @@ function effectivePiece(slot, weapon, type) {
   return weapon[type];
 }
 
-/* ---------------- Builds guardadas por modalidad de composición ----------------
-   Cada modalidad de composición (zvz/grupal/estatica/avalon_azul/avalon_dorado)
-   guarda una LISTA de builds con nombre propio (no una sola) — así cualquiera
-   puede armar "Build de Diego", editarla, y crear otra "Build de Barto" sin
-   perder la primera. `active` indica cuál de la lista se está mostrando. Para
-   ZVZ las builds de la lista se usan a la vez (son los distintos grupos de un
-   mismo evento); para el resto son variantes alternativas, no simultáneas. */
-const COMPOSABLE_MODES = ['zvz', 'grupal', 'estatica', 'avalon_azul', 'avalon_dorado'];
-function defaultTemplateFor(mode) {
-  if (mode === 'zvz') return TEMPLATES.zvz[state.zvzVariant];
-  return TEMPLATES[mode];
-}
-function defaultCompName(mode) {
-  const label = mode === 'zvz' ? 'Grupo' : (MODES[mode] ? MODES[mode].label : 'Build');
-  const list = state.comps[mode].list;
-  let n = list.length + 1;
-  let name = `${label} ${n}`;
-  while (list.some(e => e.name === name)) { n++; name = `${label} ${n}`; }
-  return name;
-}
-function newCompEntry(mode, name) {
-  return { id: uid(), name: name || defaultCompName(mode), roster: buildSlotsFromTemplate(defaultTemplateFor(mode)) };
-}
-
 /* ---------------- Estado ---------------- */
 const state = {
   guildName: 'PVPX',
-  mode: 'zvz',
-  /* Última modalidad de composición usada (zvz/grupal/estatica), para volver
-     a ella al salir de la pestaña Balance o Solitario. */
-  lastCompMode: 'zvz',
-  /* Última sub-pestaña de Solitario usada (solo_pve/solo_pvp). */
-  lastSoloMode: 'solo_pve',
-  /* Última sub-pestaña de Avalón usada (avalon_azul/avalon_dorado). */
-  lastAvalonMode: 'avalon_azul',
-  zvzVariant: 'kite',
-  comps: {
-    zvz: { active: 0, list: [{ id: uid(), name: 'Grupo 1', roster: buildSlotsFromTemplate(TEMPLATES.zvz.kite) }] },
-    grupal: { active: 0, list: [{ id: uid(), name: 'Grupal 1', roster: buildSlotsFromTemplate(TEMPLATES.grupal) }] },
-    estatica: { active: 0, list: [{ id: uid(), name: 'Estática 1', roster: buildSlotsFromTemplate(TEMPLATES.estatica) }] },
-    avalon_azul: { active: 0, list: [{ id: uid(), name: 'Azul 1', roster: buildSlotsFromTemplate(TEMPLATES.avalon_azul) }] },
-    avalon_dorado: { active: 0, list: [{ id: uid(), name: 'Dorado 1', roster: buildSlotsFromTemplate(TEMPLATES.avalon_dorado) }] },
-  },
+  /* Solo puede valer 'builds' | 'balance' | 'backups' — Composición, Solitario
+     y Avalón se unificaron en una sola pestaña "Builds" (ver customBuilds). */
+  mode: 'builds',
+  /* Id del customBuild de tipo 'group' actualmente abierto en el editor de
+     roster, dentro de la pestaña Builds — null muestra la biblioteca de
+     "Mis builds" en vez del editor de una build puntual. */
+  openBuildId: null,
   /* Balance de plata por jugador: cada uno con su saldo actual y su
      historial de movimientos (altas/bajas) con fecha y nota opcional. */
   balances: [],
-  /* Overrides de equipamiento por pieza para las builds en solitario,
-     igual que slot.gear pero indexado por el id de la build (no hay roster
-     acá, son tarjetas de referencia fijas). */
-  soloOverrides: {},
   /* Builds propias del gremio (pestaña Builds → "Mis builds") — a diferencia
      de MASTER_WEAPONS (catálogo fijo de la herramienta), estas las crea cada
-     jugador a mano: arma + equipo elegido pieza por pieza, con nombre y
-     etiquetas propias. Sin límite de cantidad. Se guardan en este navegador
-     (autoguardado); para compartirlas con el resto del gremio se usa
-     Exportar/Importar como con el resto del estado (ver applyState: al
-     importar, estas se SUMAN a las que ya haya en vez de reemplazarlas). */
+     jugador a mano. Cada una tiene `type`:
+       - 'solo'  → arma + equipo elegido pieza por pieza (build individual,
+                   como antes las builds de Solitario), sin roster.
+       - 'group' → un roster completo de jugadores, del tamaño que sea (antes
+                   esto vivía repartido en Composición/Avalón, con un tamaño
+                   fijo por modalidad — ahora cualquiera puede armar un grupo
+                   de 20, 9, 7, o lo que haga falta, todo desde acá).
+     Sin límite de cantidad. Se guardan en este navegador (autoguardado) y se
+     sincronizan en vivo si hay una base de datos compartida configurada
+     (ver FIREBASE_CONFIG); para compartirlas a mano se usa Exportar/Importar
+     (ver applyState: al importar, estas se SUMAN a las que ya haya en vez de
+     reemplazarlas). */
   customBuilds: [],
+  /* Se pone en true la primera vez que se migran los datos viejos de
+     Composición/Avalón/Solitario (comps/soloOverrides, de antes de unificar
+     todo en Builds) a customBuilds — evita volver a migrar y duplicar builds
+     en cada carga. Es un campo sincronizado (ver SYNC_FIELDS) para que la
+     migración no se repita por separado en cada dispositivo del gremio. */
+  migratedGroupBuilds: false,
 };
 
 /* ---------------- Balance de jugadores ---------------- */
@@ -12757,47 +12751,41 @@ function removeBalancePlayer(playerId) {
   state.balances = state.balances.filter(p => p.id !== playerId);
 }
 
-function currentCompBucket() {
-  return state.comps[state.mode];
-}
-function currentCompEntry() {
-  const bucket = currentCompBucket();
-  return bucket ? bucket.list[bucket.active] : null;
+/* Devuelve el customBuild de tipo 'group' abierto actualmente en el editor
+   de roster (state.openBuildId), o null si no hay ninguno abierto — en ese
+   caso el panel de Builds muestra la biblioteca ("Mis builds") en vez del
+   editor. */
+function currentOpenBuild() {
+  if (!state.openBuildId) return null;
+  const cb = state.customBuilds.find(b => b.id === state.openBuildId);
+  return (cb && buildTypeOf(cb) === 'group') ? cb : null;
 }
 function currentRoster() {
-  const entry = currentCompEntry();
-  return entry ? entry.roster : [];
+  const build = currentOpenBuild();
+  return build ? build.roster : [];
 }
 function setCurrentRoster(newRoster) {
-  const entry = currentCompEntry();
-  if (entry) entry.roster = newRoster;
+  const build = currentOpenBuild();
+  if (build) build.roster = newRoster;
 }
 
 /* ---------------- Render: barra de modos ---------------- */
-/* Cuatro secciones de primer nivel — "Composición" (agrupa ZVZ/Grupales/
-   Estática), "Solitario" (agrupa builds PvE/PvP para un solo jugador),
-   "Avalón" (agrupa las comps Azul/Dorado de los Caminos Avalonianos) y
-   "Balance" — en un único menú. Composición, Solitario y Avalón tienen un
-   segundo selector más chico para elegir la modalidad específica. */
-const COMP_MODES = ['zvz', 'grupal', 'estatica'];
-const AVALON_MODES = ['avalon_azul', 'avalon_dorado'];
+/* Tres secciones de primer nivel — "Builds" (arma y guarda TODAS las builds
+   del gremio, individuales o grupales, de cualquier tamaño — reemplaza a lo
+   que antes eran Composición/Solitario/Avalón por separado), "Balance" y
+   "Respaldos" (solo admin) — sin sub-pestañas: cada sección es una sola
+   pantalla. */
 const SECTIONS = {
-  comp: { label: 'Composición', icon: '📋', subModes: COMP_MODES, lastKey: 'lastCompMode', fallback: 'zvz' },
-  solo: { label: 'Solitario', icon: '🗡️', subModes: SOLO_MODES, lastKey: 'lastSoloMode', fallback: 'solo_pve' },
-  avalon: { label: 'Avalón', icon: '🔷', subModes: AVALON_MODES, lastKey: 'lastAvalonMode', fallback: 'avalon_azul' },
-  balance: { label: 'Balance', icon: '💰' },
   builds: { label: 'Builds', icon: '📚' },
+  balance: { label: 'Balance', icon: '💰' },
   /* Solo aparece en el menú (ver renderModeBar) cuando hay sesión iniciada
      como "admin" — el resto del gremio ni la ve. */
   backups: { label: 'Respaldos', icon: '🗄️' },
 };
 function currentSection() {
   if (state.mode === 'balance') return 'balance';
-  if (state.mode === 'builds') return 'builds';
   if (state.mode === 'backups') return 'backups';
-  if (SOLO_MODES.includes(state.mode)) return 'solo';
-  if (AVALON_MODES.includes(state.mode)) return 'avalon';
-  return 'comp';
+  return 'builds';
 }
 
 function renderModeBar() {
@@ -12815,32 +12803,12 @@ function renderModeBar() {
     item.innerHTML = `<span>${s.icon}</span><span>${s.label}</span>`;
     item.onclick = () => {
       if (currentSection() === key) return;
-      if (key === 'balance' || key === 'builds' || key === 'backups') {
-        state.mode = key;
-      } else {
-        state.mode = state[s.lastKey] || s.fallback;
-      }
+      state.mode = key;
       renderAll();
     };
     menu.appendChild(item);
   }
   bar.appendChild(menu);
-
-  const activeSection = SECTIONS[currentSection()];
-  if (activeSection && activeSection.subModes) {
-    const sub = document.createElement('div');
-    sub.className = 'submode-menu';
-    activeSection.subModes.forEach(key => {
-      const m = MODES[key];
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'submode-item' + (state.mode === key ? ' active' : '');
-      item.innerHTML = `<span>${m.icon}</span><span>${m.label}</span>`;
-      item.onclick = () => { state.mode = key; state[activeSection.lastKey] = key; renderAll(); };
-      sub.appendChild(item);
-    });
-    bar.appendChild(sub);
-  }
 
   const desc = document.createElement('div');
   desc.className = 'mode-desc';
@@ -12848,46 +12816,68 @@ function renderModeBar() {
   bar.appendChild(desc);
 }
 
-function buildZvzVariantBar() {
+/* ---------------- Plantillas rápidas dentro del editor de una build grupal ---
+   Reemplaza a la vieja "Doctrina ZVZ" (que solo aplicaba a la modalidad
+   ZVZ): ahora cualquier build grupal, sin importar su tamaño, puede arrancar
+   desde cualquiera de estas plantillas — siguen viviendo en TEMPLATES, la
+   misma data de siempre, así que el equipo sugerido por rol no cambió. */
+const QUICK_TEMPLATES = [
+  { key: 'zvz_kite', label: 'ZVZ · Kite', icon: '🏃', get: () => TEMPLATES.zvz.kite },
+  { key: 'zvz_brawl', label: 'ZVZ · Brawl', icon: '🥊', get: () => TEMPLATES.zvz.brawl },
+  { key: 'zvz_estandar', label: 'ZVZ · Estándar', icon: '⚔️', get: () => TEMPLATES.zvz.estandar },
+  { key: 'grupal', label: 'Grupales', icon: '🛡️', get: () => TEMPLATES.grupal },
+  { key: 'estatica', label: 'Estática', icon: '⭐', get: () => TEMPLATES.estatica },
+  { key: 'avalon_azul', label: 'Avalón Azul', icon: '🔵', get: () => TEMPLATES.avalon_azul },
+  { key: 'avalon_dorado', label: 'Avalón Dorado', icon: '🟡', get: () => TEMPLATES.avalon_dorado },
+];
+
+function buildTemplateBar(build) {
   const wrap = document.createElement('div');
   wrap.className = 'group-bar';
   const label = document.createElement('div');
   label.style.cssText = 'font-size:12px;color:var(--grey);align-self:center;margin-right:4px;';
-  label.textContent = 'Doctrina:';
+  label.textContent = 'Empezar desde:';
   wrap.appendChild(label);
-  for (const key of Object.keys(ZVZ_VARIANTS)) {
-    const v = ZVZ_VARIANTS[key];
+
+  QUICK_TEMPLATES.forEach(t => {
     const tab = document.createElement('div');
-    tab.className = 'group-tab' + (state.zvzVariant === key ? ' active' : '') + (isEditor() ? '' : ' locked');
-    tab.title = isEditor() ? v.desc : '🔒 Iniciá sesión para cambiar la doctrina';
-    tab.innerHTML = `${v.icon} ${v.label}`;
+    tab.className = 'group-tab' + (isEditor() ? '' : ' locked');
+    tab.title = isEditor() ? `Reemplaza el roster actual con la plantilla "${t.label}"` : '🔒 Iniciá sesión para usar plantillas';
+    tab.innerHTML = `${t.icon} ${t.label}`;
     tab.onclick = () => {
-      if (state.zvzVariant === key) return;
-      if (!requireEditor('cambiar la doctrina')) return;
-      const ok = confirm(`¿Aplicar la doctrina "${v.label}" a TODOS los grupos ZVZ guardados? Se perderán los nombres de jugador asignados (los nombres de las builds se mantienen).`);
-      if (!ok) return;
-      state.zvzVariant = key;
-      state.comps.zvz.list.forEach(entry => { entry.roster = buildSlotsFromTemplate(TEMPLATES.zvz[key]); });
+      if (!requireEditor('usar una plantilla')) return;
+      if (build.roster.length && !confirm(`¿Reemplazar el roster actual (${build.roster.length} jugadores) con la plantilla "${t.label}"? Se perderán los nombres y el equipo asignados en esta build.`)) return;
+      build.roster = buildSlotsFromTemplate(t.get());
       renderPanel();
     };
     wrap.appendChild(tab);
-  }
-  const descTag = document.createElement('div');
-  descTag.style.cssText = 'font-size:12px;color:var(--grey);align-self:center;margin-left:6px;font-style:italic;';
-  descTag.textContent = ZVZ_VARIANTS[state.zvzVariant].desc;
-  wrap.appendChild(descTag);
+  });
+
+  const clearTab = document.createElement('div');
+  clearTab.className = 'group-tab' + (isEditor() ? '' : ' locked');
+  clearTab.title = isEditor() ? 'Vaciar el roster de esta build' : '🔒 Iniciá sesión para vaciar el roster';
+  clearTab.innerHTML = '🗑 Vaciar';
+  clearTab.onclick = () => {
+    if (!requireEditor('vaciar el roster')) return;
+    if (!build.roster.length) return;
+    if (!confirm('¿Vaciar el roster de esta build? Se perderán todos los jugadores asignados.')) return;
+    build.roster = [];
+    renderPanel();
+  };
+  wrap.appendChild(clearTab);
+
   return wrap;
 }
 
-/* Agrega/quita un slot de jugador de la lista actual. Se usan tanto desde
-   la tarjeta "+ Agregar jugador" como desde los botones rápidos +/- del
-   encabezado, para cubrir el caso de eventos donde no se completan todos
-   los roles hasta el máximo establecido. */
+/* Agrega/quita un slot de jugador de la build grupal abierta. Se usan tanto
+   desde la tarjeta "+ Agregar jugador" como desde los botones rápidos +/-
+   del encabezado, para cubrir el caso de eventos donde no se completan
+   todos los roles hasta el máximo establecido. */
 function addPlayerSlot() {
   if (!requireEditor('agregar jugadores')) return;
-  const max = state.mode === 'zvz' ? 20 : MODES[state.mode].max;
+  if (!currentOpenBuild()) return;
   const r = currentRoster();
-  if (r.length >= max) { showToast(`Ya alcanzaste el máximo de ${max} jugadores`); return; }
+  if (r.length >= GROUP_BUILD_MAX) { showToast(`Ya alcanzaste el máximo de ${GROUP_BUILD_MAX} jugadores`); return; }
   r.push({ id: uid(), role: 'dps_melee', weaponIdx: 0, player: '', gear: {} });
   setCurrentRoster(r);
   renderPanel();
@@ -12906,9 +12896,19 @@ function renderPanel() {
   // Si quedó guardado state.mode === 'backups' de una sesión de admin
   // anterior pero ya no hay sesión de admin activa (se cerró sesión, o se
   // abrió el archivo/respaldo en otro dispositivo), no se puede quedar
-  // mostrando esa pestaña — se manda a Composición como si nunca hubiese
-  // estado ahí.
-  if (state.mode === 'backups' && !isAdminUser()) state.mode = state.lastCompMode || 'zvz';
+  // mostrando esa pestaña — se manda a Builds como si nunca hubiese estado
+  // ahí.
+  if (state.mode === 'backups' && !isAdminUser()) state.mode = 'builds';
+
+  // Cualquier redibujado real del panel — venga de donde venga (un blur de
+  // input como el de abajo, el listener de focusout, una acción normal del
+  // usuario, etc.) — ya deja la pantalla al día, así que cualquier
+  // redibujado remoto pendiente queda satisfecho acá. Si esto se dejara
+  // solo en el listener de focusout, un input con su propio handler de
+  // blur (ver playerInput más abajo) que llama a renderPanel()
+  // directamente reemplaza el DOM ANTES de que el focusout llegue a
+  // burbujear hasta #panel, y la bandera quedaría prendida para siempre.
+  pendingRemoteRenderNeeded = false;
 
   saveToStorage();
   const panel = document.getElementById('panel');
@@ -12919,93 +12919,30 @@ function renderPanel() {
     return;
   }
 
-  if (state.mode === 'builds') {
-    panel.appendChild(buildBuildsLibraryPanel());
-    return;
-  }
-
   if (state.mode === 'backups') {
     panel.appendChild(buildBackupsPanel());
     return;
   }
 
-  if (SOLO_MODES.includes(state.mode)) {
-    panel.appendChild(buildSoloPanel());
-    return;
+  // Acá state.mode es siempre 'builds': o hay una build grupal abierta para
+  // editar su roster, o se muestra la biblioteca de "Mis builds".
+  const openBuild = currentOpenBuild();
+  if (openBuild) {
+    panel.appendChild(buildGroupEditorPanel(openBuild));
+  } else {
+    panel.appendChild(buildBuildsLibraryPanel());
   }
-
-  panel.appendChild(buildSummaryStrip());
-
-  if (state.mode === 'zvz') panel.appendChild(buildZvzVariantBar());
-  panel.appendChild(buildCompTabBar());
-
-  const roster = currentRoster();
-  const max = state.mode === 'zvz' ? 20 : MODES[state.mode].max;
-
-  const head = document.createElement('div');
-  head.className = 'roster-head';
-  const activeEntry = currentCompEntry();
-  const title = state.mode === 'zvz'
-    ? `${activeEntry.name} · ${ZVZ_VARIANTS[state.zvzVariant].label}`
-    : `${MODES[state.mode].label} — ${activeEntry.name}`;
-  head.innerHTML = `
-    <h2>${title}</h2>
-    <div class="fill-bar-wrap"><div class="fill-bar" style="width:${Math.min(100, roster.length / max * 100)}%"></div></div>
-    <div style="font-size:13px;color:var(--grey);">${roster.length} / ${max} jugadores</div>
-  `;
-  const quickControls = document.createElement('div');
-  quickControls.className = 'quick-controls';
-  quickControls.innerHTML = `
-    <button type="button" class="small ghost" id="quickRemove" title="Quitar el último jugador de la lista">− Quitar</button>
-    <button type="button" class="small ghost" id="quickAdd" title="Agregar un jugador extra a la lista">+ Agregar</button>
-  `;
-  head.appendChild(quickControls);
-  panel.appendChild(head);
-  head.querySelector('#quickAdd').onclick = addPlayerSlot;
-  head.querySelector('#quickRemove').onclick = removeLastPlayerSlot;
-  head.querySelector('#quickAdd').disabled = !isEditor();
-  head.querySelector('#quickRemove').disabled = !isEditor();
-
-  const grid = document.createElement('div');
-  grid.className = 'grid' + (state.mode === 'zvz' ? ' grid-row' : '');
-  roster.forEach((slot, idx) => grid.appendChild(buildSlotCard(slot, idx)));
-
-  if (roster.length < max) {
-    const addCard = document.createElement('button');
-    addCard.className = 'add-slot-card';
-    addCard.disabled = !isEditor();
-    addCard.innerHTML = '+ Agregar jugador';
-    addCard.onclick = addPlayerSlot;
-    grid.appendChild(addCard);
-  }
-  panel.appendChild(grid);
-
-  panel.appendChild(buildLegend());
 }
 
-function buildSummaryStrip() {
+function buildSummaryStrip(roster) {
   const wrap = document.createElement('div');
   wrap.className = 'summary-strip';
-
-  let roster, totalGroups = null;
-  if (state.mode === 'zvz') {
-    roster = state.comps.zvz.list.flatMap(e => e.roster);
-    totalGroups = state.comps.zvz.list.length;
-  } else {
-    roster = currentRoster();
-  }
 
   const counts = {};
   roster.forEach(s => counts[s.role] = (counts[s.role] || 0) + 1);
   const filled = roster.filter(s => s.player.trim()).length;
 
-  const stats = [];
-  if (totalGroups !== null) {
-    stats.push([`Grupos ZVZ`, totalGroups]);
-    stats.push([`Jugadores totales`, roster.length]);
-  } else {
-    stats.push([`Jugadores`, roster.length]);
-  }
+  const stats = [[`Jugadores`, roster.length]];
   stats.push([`Nombres asignados`, `${filled}/${roster.length}`]);
   for (const key of ROLE_KEYS) {
     if (counts[key]) stats.push([ROLES[key].label, counts[key]]);
@@ -13020,107 +12957,77 @@ function buildSummaryStrip() {
   return wrap;
 }
 
-/* Barra de builds guardadas — genérica para las 5 modalidades de composición
-   (ZVZ/Grupales/Estática/Avalón Azul/Avalón Dorado). Cada pestaña es una
-   build con nombre propio (editable con ✎), que se puede crear, cambiar y
-   eliminar sin perder las demás. Para ZVZ se mantiene el tope histórico de
-   4 grupos por evento; el resto no tiene límite. */
-function buildCompTabBar() {
+/* ---------------- Editor de roster de una build grupal ----------------
+   Pantalla enfocada a la que se entra desde una tarjeta de "Mis builds"
+   (ver buildGroupBuildCard) — muestra el resumen, la barra de plantillas
+   rápidas, el encabezado con nombre editable y controles +/-, la grilla de
+   jugadores y la leyenda de roles. En rosters de más de 9 jugadores se usa
+   el layout compacto en fila (antes reservado solo a ZVZ) para que quepan
+   cómodamente builds grandes tipo ZVZ de 20+. */
+function buildGroupEditorPanel(build) {
   const wrap = document.createElement('div');
-  wrap.className = 'group-bar';
-  const mode = state.mode;
-  const bucket = state.comps[mode];
-  const max = mode === 'zvz' ? 20 : MODES[mode].max;
 
-  bucket.list.forEach((entry, i) => {
-    const tab = document.createElement('div');
-    tab.className = 'group-tab' + (bucket.active === i ? ' active' : '');
-    tab.title = 'Tocá para ver esta build — ✎ para renombrarla';
+  const backRow = document.createElement('div');
+  backRow.className = 'back-row';
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'ghost small';
+  backBtn.textContent = '← Volver a Mis builds';
+  backBtn.onclick = () => { state.openBuildId = null; renderPanel(); };
+  backRow.appendChild(backBtn);
+  wrap.appendChild(backRow);
 
-    const nameEl = document.createElement('span');
-    nameEl.textContent = entry.name;
-    tab.appendChild(nameEl);
+  wrap.appendChild(buildSummaryStrip(build.roster));
+  wrap.appendChild(buildTemplateBar(build));
 
-    const countEl = document.createElement('span');
-    countEl.className = 'count';
-    countEl.textContent = `${entry.roster.length}/${max}`;
-    tab.appendChild(countEl);
+  const head = document.createElement('div');
+  head.className = 'roster-head';
+  const titleEl = document.createElement('h2');
+  titleEl.textContent = build.name;
+  titleEl.title = isEditor() ? 'Click para renombrar' : '🔒 Iniciá sesión para renombrar';
+  titleEl.style.cursor = isEditor() ? 'pointer' : 'default';
+  titleEl.onclick = () => {
+    if (!requireEditor('renombrar builds')) return;
+    const nn = prompt('Nombre para esta build:', build.name);
+    if (nn === null) return;
+    const clean = nn.trim();
+    if (clean) { build.name = clean; renderPanel(); }
+  };
+  head.appendChild(titleEl);
+  const countInfo = document.createElement('div');
+  countInfo.style.cssText = 'font-size:13px;color:var(--grey);';
+  countInfo.textContent = `${build.roster.length} jugador${build.roster.length === 1 ? '' : 'es'}`;
+  head.appendChild(countInfo);
 
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'tab-rename-btn';
-    renameBtn.textContent = '✎';
-    renameBtn.title = 'Renombrar esta build';
-    renameBtn.disabled = !isEditor();
-    renameBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (!requireEditor('renombrar builds')) return;
-      const nn = prompt('Nombre para esta build:', entry.name);
-      if (nn === null) return;
-      const clean = nn.trim();
-      if (clean) { entry.name = clean; renderPanel(); }
-    };
-    tab.appendChild(renameBtn);
+  const quickControls = document.createElement('div');
+  quickControls.className = 'quick-controls';
+  quickControls.innerHTML = `
+    <button type="button" class="small ghost" id="quickRemove" title="Quitar el último jugador de la lista">− Quitar</button>
+    <button type="button" class="small ghost" id="quickAdd" title="Agregar un jugador extra a la lista">+ Agregar</button>
+  `;
+  head.appendChild(quickControls);
+  wrap.appendChild(head);
+  head.querySelector('#quickAdd').onclick = addPlayerSlot;
+  head.querySelector('#quickRemove').onclick = removeLastPlayerSlot;
+  head.querySelector('#quickAdd').disabled = !isEditor();
+  head.querySelector('#quickRemove').disabled = !isEditor();
 
-    tab.onclick = () => { if (bucket.active !== i) { bucket.active = i; renderPanel(); } };
-    wrap.appendChild(tab);
-  });
+  const compact = build.roster.length > 9;
+  const grid = document.createElement('div');
+  grid.className = 'grid' + (compact ? ' grid-row' : '');
+  build.roster.forEach((slot, idx) => grid.appendChild(buildSlotCard(slot, idx, compact)));
 
-  if (mode !== 'zvz' || bucket.list.length < 4) {
-    const addBtn = document.createElement('button');
-    addBtn.className = 'small ghost';
-    addBtn.textContent = '+ Nueva build';
-    addBtn.disabled = !isEditor();
-    addBtn.onclick = () => {
-      if (!requireEditor('crear builds')) return;
-      const suggested = defaultCompName(mode);
-      const nn = prompt('Nombre para la nueva build:', suggested);
-      if (nn === null) return;
-      bucket.list.push(newCompEntry(mode, nn.trim() || suggested));
-      bucket.active = bucket.list.length - 1;
-      renderPanel();
-    };
-    wrap.appendChild(addBtn);
-
-    if (bucket.list.length) {
-      const dupBtn = document.createElement('button');
-      dupBtn.className = 'small ghost';
-      dupBtn.title = 'Crea una copia de la build actual (mismo roster completo) para usar como punto de partida';
-      dupBtn.textContent = '⧉ Duplicar build actual';
-      dupBtn.disabled = !isEditor();
-      dupBtn.onclick = () => {
-        if (!requireEditor('duplicar builds')) return;
-        const current = bucket.list[bucket.active];
-        const suggested = `${current.name} (copia)`;
-        const nn = prompt('Nombre para la copia:', suggested);
-        if (nn === null) return;
-        const clone = {
-          id: uid(),
-          name: nn.trim() || suggested,
-          roster: current.roster.map(s => ({ ...s, id: uid(), gear: Object.assign({}, s.gear || {}) })),
-        };
-        bucket.list.splice(bucket.active + 1, 0, clone);
-        bucket.active = bucket.active + 1;
-        renderPanel();
-        showToast('Build duplicada ✔');
-      };
-      wrap.appendChild(dupBtn);
-    }
+  if (build.roster.length < GROUP_BUILD_MAX) {
+    const addCard = document.createElement('button');
+    addCard.className = 'add-slot-card';
+    addCard.disabled = !isEditor();
+    addCard.innerHTML = '+ Agregar jugador';
+    addCard.onclick = addPlayerSlot;
+    grid.appendChild(addCard);
   }
-  if (bucket.list.length > 1) {
-    const delBtn = document.createElement('button');
-    delBtn.className = 'small ghost';
-    delBtn.textContent = '🗑 Eliminar build actual';
-    delBtn.disabled = !isEditor();
-    delBtn.onclick = () => {
-      if (!requireEditor('eliminar builds')) return;
-      if (!confirm(`¿Eliminar la build "${bucket.list[bucket.active].name}"? Esta acción no se puede deshacer.`)) return;
-      bucket.list.splice(bucket.active, 1);
-      bucket.active = Math.max(0, bucket.active - 1);
-      renderPanel();
-    };
-    wrap.appendChild(delBtn);
-  }
+  wrap.appendChild(grid);
+
+  wrap.appendChild(buildLegend());
   return wrap;
 }
 
@@ -13217,14 +13124,14 @@ function buildDoll(weapon, def, slot, weaponEditable) {
 
   // Catálogo de armas para editar el arma principal tocando la casilla —
   // en tarjetas de roster se ofrece el catálogo COMPLETO de todas las armas
-  // de la herramienta (agrupadas por familia), igual que en Solitario, así
-  // cualquier jugador puede llevar el arma que quiera y no solo las
-  // predeterminadas del rol (mismo criterio que el <select> de abajo). La
-  // elección se guarda en `slot.customWeapon` (objeto de arma completo, o
-  // null para volver al arma por defecto de la build/plantilla, que sigue
-  // viviendo en `slot.weaponIdx` sin tocarse). En tarjetas de Solitario se
-  // pasa directamente un objeto de configuración ya armado (weaponEditable
-  // como objeto en vez de true/false — ver buildSoloCard).
+  // de la herramienta (agrupadas por familia), así cualquier jugador puede
+  // llevar el arma que quiera y no solo las predeterminadas del rol (mismo
+  // criterio que el <select> de abajo). La elección se guarda en
+  // `slot.customWeapon` (objeto de arma completo, o null para volver al
+  // arma por defecto de la build/plantilla, que sigue viviendo en
+  // `slot.weaponIdx` sin tocarse). En tarjetas de build individual se pasa
+  // directamente un objeto de configuración ya armado (weaponEditable como
+  // objeto en vez de true/false — ver buildCustomBuildCard).
   let weaponEditableCfg;
   if (weaponEditable && typeof weaponEditable === 'object') {
     weaponEditableCfg = weaponEditable;
@@ -13295,7 +13202,7 @@ function buildDoll(weapon, def, slot, weaponEditable) {
   return doll;
 }
 
-function buildSlotCard(slot, idx) {
+function buildSlotCard(slot, idx, compact) {
   const def = ROLES[slot.role];
   const weapon = slot.customWeapon || def.weapons[slot.weaponIdx] || def.weapons[0];
   const accent = ROLE_ACCENT[slot.role] || 'var(--red)';
@@ -13356,10 +13263,10 @@ function buildSlotCard(slot, idx) {
   // armar cualquier build sin restricciones. La opción de arriba de todo
   // vuelve al arma por defecto de la plantilla (equivalente a "Usar la de
   // la build" del selector visual en el muñeco).
-  // En ZVZ (fila compacta) se omite: es 100% redundante con clickear el
-  // ícono de arma del muñeco, que ya abre el mismo catálogo completo — así
-  // se libera espacio en la fila para los 20 jugadores.
-  if (state.mode !== 'zvz') {
+  // En layout compacto (rosters de más de 9 jugadores, ej. ZVZ) se omite: es
+  // 100% redundante con clickear el ícono de arma del muñeco, que ya abre el
+  // mismo catálogo completo — así se libera espacio en la fila.
+  if (!compact) {
     const weaponSelect = document.createElement('select');
     weaponSelect.className = 'weapon-select';
     weaponSelect.disabled = !isEditor();
@@ -13423,20 +13330,9 @@ function buildLegend() {
   return wrap;
 }
 
-/* ---------------- Render: pestaña Solitario (PvE / PvP) ---------------- */
-/* La tarjeta de Solitario es un punto de partida totalmente editable, no
-   una referencia fija: además de las piezas de armadura, acá también se
-   puede cambiar el arma principal — eligiendo entre TODAS las armas de la
-   herramienta (agrupadas por familia), no solo las del rol. El override
-   guarda tanto las piezas (igual que slot.gear en el roster) como el arma
-   elegida (null = usar la de la build sugerida). */
-function soloOverrideFor(b) {
-  let ov = state.soloOverrides[b.id];
-  if (!ov || typeof ov.gear !== 'object') ov = { gear: {}, weapon: null };
-  state.soloOverrides[b.id] = ov;
-  return ov;
-}
-
+/* ---------------- Gráfico de estadísticas de una build individual ----------
+   Reutilizado por buildCustomBuildCard (builds "individuales" de Mis
+   builds) — antes vivía en la sección de Solitario, que se unificó acá. */
 function buildSoloStatsChart(stats, accent) {
   const wrap = document.createElement('div');
   wrap.className = 'solo-stats';
@@ -13454,71 +13350,14 @@ function buildSoloStatsChart(stats, accent) {
   return wrap;
 }
 
-function buildSoloCard(b, accent) {
-  const card = document.createElement('div');
-  card.className = 'solo-card';
-  card.style.setProperty('--accent', accent);
-
-  const head = document.createElement('div');
-  head.className = 'solo-card-head';
-  head.innerHTML = `<div class="solo-card-title"><span>${b.icon}</span><span>${b.label}</span></div>`;
-  card.appendChild(head);
-
-  const ov = soloOverrideFor(b);
-  const weapon = ov.weapon || b.weapon;
-  const slot = { gear: ov.gear };
-
-  const weaponEditableCfg = {
-    pieceLabel: 'arma', catalog: WEAPON_PICKER_GROUPS, currentKey: weapon.name, allowNone: false, showReset: true,
-    onPick: (key) => {
-      if (key === null) {
-        ov.weapon = null;
-      } else {
-        const found = MASTER_WEAPONS.find(w => w.name === key);
-        if (found) ov.weapon = found;
-      }
-      ov.gear = {};
-      renderPanel();
-    },
-  };
-  card.appendChild(buildDoll(weapon, { icon: b.icon }, slot, weaponEditableCfg));
-
-  const desc = document.createElement('p');
-  desc.className = 'solo-desc';
-  desc.textContent = b.desc;
-  card.appendChild(desc);
-
-  card.appendChild(buildSoloStatsChart(computeSoloStats(weapon, slot), accent));
-
-  return card;
-}
-
-function buildSoloPanel() {
-  const wrap = document.createElement('div');
-  wrap.className = 'solo-panel';
-
-  const note = document.createElement('div');
-  note.className = 'solo-note';
-  note.innerHTML = `⚠ Punto de partida de meta ago-2026 (temporada Radiant Wilds) — no son datos oficiales de Albion Online. Tocá el arma o cualquier pieza para elegir entre TODO el catálogo de la herramienta (agrupado por familia/material): el gráfico de abajo se recalcula según lo que dejes puesto.`;
-  wrap.appendChild(note);
-
-  const grid = document.createElement('div');
-  grid.className = 'solo-grid';
-  const accent = SOLO_ACCENT[state.mode] || 'var(--red)';
-  SOLO_BUILDS[state.mode].forEach(b => grid.appendChild(buildSoloCard(b, accent)));
-  wrap.appendChild(grid);
-
-  return wrap;
-}
-
 /* ---------------- Biblioteca de Builds ----------------
    Galería de referencia con TODAS las builds ya definidas en la
    herramienta (las de cada rol + las armas sueltas del catálogo completo,
    el mismo MASTER_WEAPONS que usan los selectores de arma) — filtrable por
    rol y por tipo de arma, con buscador. Es de solo lectura: para armar una
-   composición real se usan las pestañas de Composición / Solitario /
-   Avalón; esto es un catálogo para consultar equipo rápido, con un botón
-   para copiar cada build y pegarla directo en Discord. */
+   build real se usa "✍️ Mis builds" (más arriba, dentro de la misma
+   pestaña Builds); esto es un catálogo para consultar equipo rápido, con
+   un botón para copiar cada build y pegarla directo en Discord. */
 let buildsFilter = { search: '', role: 'all', family: 'all' };
 
 /* Para cada build (por nombre), a qué rol(es) de ROLES pertenece. Una
@@ -13797,17 +13636,28 @@ function buildLibraryCard(b, roles, contentTypes) {
 
 /* ---------------- "Mis builds" — builds propias del gremio ----------------
    A diferencia del catálogo de abajo (fijo, generado por la herramienta a
-   partir de los datos del juego), esta sección la arma cada jugador a mano:
-   elegís arma y equipo pieza por pieza (mismo editor con íconos que
-   Composición/Solitario — click en cualquier casilla para cambiarla), le
-   ponés nombre y etiquetas propias, y arrancás siempre con al menos 1 para
-   editar. El botón "+ Agregar build" no tiene límite. Se guarda en este
-   navegador; no hay backend compartido en tiempo real (ver nota en la
-   sección) — compartir con el resto del gremio se hace exportando el
-   archivo y que lo importen, sumando sus builds a las que ya tengan. */
+   partir de los datos del juego), esta sección la arma cada jugador a mano,
+   de dos tipos posibles (cb.type):
+     - 'solo'  → una build individual: arma + equipo elegido pieza por
+                 pieza (antes vivía en la pestaña Solitario).
+     - 'group' → una build grupal: un roster completo de jugadores, del
+                 tamaño que sea (antes vivía repartida entre Composición y
+                 Avalón, con un tamaño fijo por modalidad).
+   Ambos tipos comparten nombre y etiquetas propias, conviven en la misma
+   grilla y no tienen límite de cantidad. Se guardan en este navegador
+   (autoguardado) y se sincronizan en vivo con el resto del gremio si hay
+   una base de datos compartida configurada; para compartirlas a mano se
+   usa Exportar/Importar (ver applyState: al importar, estas se SUMAN a las
+   que ya haya en vez de reemplazarlas). */
 function newCustomBuild(name) {
-  return { id: uid(), name: name || 'Mi build', tags: [], customWeapon: null, gear: {} };
+  return { id: uid(), name: name || 'Mi build', tags: [], type: 'solo', customWeapon: null, gear: {} };
 }
+function newGroupBuild(name) {
+  return { id: uid(), name: name || 'Build grupal', tags: [], type: 'group', roster: [] };
+}
+/* Las builds guardadas antes de esta versión no tienen `type` (todas eran
+   "individuales" en ese entonces) — se tratan como 'solo' por defecto. */
+function buildTypeOf(cb) { return cb.type === 'group' ? 'group' : 'solo'; }
 
 function parseTagsInput(str) {
   return (str || '')
@@ -13823,8 +13673,11 @@ function allCustomBuildTags() {
   return [...set].sort((a, b) => a.localeCompare(b, 'es'));
 }
 
-let myBuildsFilter = { search: '', tag: 'all' };
+let myBuildsFilter = { search: '', tag: 'all', type: 'all' };
 
+/* Tarjeta de una build INDIVIDUAL (type:'solo') — arma + equipo editables
+   pieza por pieza, con el mismo gráfico de estadísticas que antes tenían
+   las builds de Solitario. */
 function buildCustomBuildCard(cb) {
   const card = document.createElement('div');
   card.className = 'lib-card my-build-card';
@@ -13844,21 +13697,36 @@ function buildCustomBuildCard(cb) {
     renderPanel();
   };
   headRow.appendChild(title);
-  if (state.customBuilds.length > 1) {
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'my-build-del';
-    delBtn.textContent = '🗑';
-    delBtn.title = 'Eliminar esta build';
-    delBtn.disabled = !isEditor();
-    delBtn.onclick = () => {
-      if (!requireEditor('eliminar builds')) return;
-      if (!confirm(`¿Eliminar la build "${cb.name}"? Esta acción no se puede deshacer.`)) return;
-      state.customBuilds = state.customBuilds.filter(x => x.id !== cb.id);
-      renderPanel();
-    };
-    headRow.appendChild(delBtn);
-  }
+
+  const dupBtn = document.createElement('button');
+  dupBtn.type = 'button';
+  dupBtn.className = 'my-build-del';
+  dupBtn.textContent = '⧉';
+  dupBtn.title = 'Duplicar esta build';
+  dupBtn.disabled = !isEditor();
+  dupBtn.onclick = () => {
+    if (!requireEditor('duplicar builds')) return;
+    const clone = { id: uid(), name: `${cb.name} (copia)`, tags: (cb.tags || []).slice(), type: 'solo', customWeapon: cb.customWeapon || null, gear: Object.assign({}, cb.gear || {}) };
+    const idx = state.customBuilds.indexOf(cb);
+    state.customBuilds.splice(idx + 1, 0, clone);
+    renderPanel();
+    showToast('Build duplicada ✔');
+  };
+  headRow.appendChild(dupBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'my-build-del';
+  delBtn.textContent = '🗑';
+  delBtn.title = 'Eliminar esta build';
+  delBtn.disabled = !isEditor();
+  delBtn.onclick = () => {
+    if (!requireEditor('eliminar builds')) return;
+    if (!confirm(`¿Eliminar la build "${cb.name}"? Esta acción no se puede deshacer.`)) return;
+    state.customBuilds = state.customBuilds.filter(x => x.id !== cb.id);
+    renderPanel();
+  };
+  headRow.appendChild(delBtn);
   card.appendChild(headRow);
 
   const tagsWrap = document.createElement('div');
@@ -13898,6 +13766,8 @@ function buildCustomBuildCard(cb) {
   };
   card.appendChild(buildDoll(weapon, { icon: '⚔️' }, slot, weaponEditableCfg));
 
+  card.appendChild(buildSoloStatsChart(computeSoloStats(weapon, slot), '#3ecf6e'));
+
   const actionsRow = document.createElement('div');
   actionsRow.className = 'lib-card-actions';
   const copyBtn = document.createElement('button');
@@ -13933,6 +13803,136 @@ function buildCustomBuildCard(cb) {
   return card;
 }
 
+/* Tarjeta de una build GRUPAL (type:'group') — resumen compacto (cantidad de
+   jugadores + chips por rol) más un botón para entrar al editor de roster
+   completo (ver buildGroupEditorPanel). Tocar la tarjeta entera también
+   abre el editor. */
+function buildGroupBuildCard(cb) {
+  const card = document.createElement('div');
+  card.className = 'lib-card my-build-card group-build-card';
+  card.style.setProperty('--accent', '#4f8ff0');
+  card.onclick = () => { state.openBuildId = cb.id; renderPanel(); };
+
+  const headRow = document.createElement('div');
+  headRow.className = 'my-build-head';
+  const title = document.createElement('div');
+  title.className = 'lib-card-title my-build-title';
+  title.textContent = cb.name;
+  title.title = isEditor() ? 'Click para renombrar' : '🔒 Iniciá sesión para renombrar';
+  title.onclick = (e) => {
+    e.stopPropagation();
+    if (!requireEditor('renombrar builds')) return;
+    const nn = prompt('Nombre para esta build:', cb.name);
+    if (nn === null) return;
+    cb.name = nn.trim() || cb.name;
+    renderPanel();
+  };
+  headRow.appendChild(title);
+
+  const dupBtn = document.createElement('button');
+  dupBtn.type = 'button';
+  dupBtn.className = 'my-build-del';
+  dupBtn.textContent = '⧉';
+  dupBtn.title = 'Duplicar esta build (con todo su roster)';
+  dupBtn.disabled = !isEditor();
+  dupBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!requireEditor('duplicar builds')) return;
+    const clone = {
+      id: uid(), name: `${cb.name} (copia)`, tags: (cb.tags || []).slice(), type: 'group',
+      roster: cb.roster.map(s => ({ ...s, id: uid(), gear: Object.assign({}, s.gear || {}) })),
+    };
+    const idx = state.customBuilds.indexOf(cb);
+    state.customBuilds.splice(idx + 1, 0, clone);
+    renderPanel();
+    showToast('Build duplicada ✔');
+  };
+  headRow.appendChild(dupBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'my-build-del';
+  delBtn.textContent = '🗑';
+  delBtn.title = 'Eliminar esta build';
+  delBtn.disabled = !isEditor();
+  delBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!requireEditor('eliminar builds')) return;
+    if (!confirm(`¿Eliminar la build "${cb.name}"? Esta acción no se puede deshacer.`)) return;
+    state.customBuilds = state.customBuilds.filter(x => x.id !== cb.id);
+    if (state.openBuildId === cb.id) state.openBuildId = null;
+    renderPanel();
+  };
+  headRow.appendChild(delBtn);
+  card.appendChild(headRow);
+
+  const tagsWrap = document.createElement('div');
+  tagsWrap.className = 'lib-tags my-build-tags';
+  (cb.tags || []).forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'lib-tag neutral my-build-tag';
+    chip.textContent = '🏷 ' + t;
+    tagsWrap.appendChild(chip);
+  });
+  const tagBtn = document.createElement('button');
+  tagBtn.type = 'button';
+  tagBtn.className = 'my-build-tag-add';
+  tagBtn.textContent = (cb.tags && cb.tags.length) ? '✎ etiquetas' : '+ etiqueta';
+  tagBtn.title = 'Editar etiquetas (separadas por coma) — sirven para buscar esta build después';
+  tagBtn.disabled = !isEditor();
+  tagBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!requireEditor('editar etiquetas')) return;
+    const nn = prompt('Etiquetas para esta build, separadas por coma (ej: zvz, tank, avalón):', (cb.tags || []).join(', '));
+    if (nn === null) return;
+    cb.tags = parseTagsInput(nn);
+    renderPanel();
+  };
+  tagsWrap.appendChild(tagBtn);
+  card.appendChild(tagsWrap);
+
+  const summary = document.createElement('div');
+  summary.className = 'group-build-summary';
+  const countEl = document.createElement('div');
+  countEl.className = 'group-build-count';
+  countEl.textContent = `👥 ${cb.roster.length} jugador${cb.roster.length === 1 ? '' : 'es'}`;
+  summary.appendChild(countEl);
+
+  const rolesEl = document.createElement('div');
+  rolesEl.className = 'group-build-roles';
+  const counts = {};
+  cb.roster.forEach(s => counts[s.role] = (counts[s.role] || 0) + 1);
+  ROLE_KEYS.forEach(k => {
+    if (!counts[k]) return;
+    const chip = document.createElement('span');
+    chip.className = 'group-build-role-chip';
+    chip.style.setProperty('--accent', ROLE_ACCENT[k] || 'var(--red)');
+    chip.textContent = `${ROLES[k].icon} ${counts[k]}`;
+    chip.title = ROLES[k].label;
+    rolesEl.appendChild(chip);
+  });
+  if (!cb.roster.length) {
+    const emptyChip = document.createElement('span');
+    emptyChip.className = 'group-build-role-chip';
+    emptyChip.textContent = 'Sin jugadores todavía';
+    rolesEl.appendChild(emptyChip);
+  }
+  summary.appendChild(rolesEl);
+  card.appendChild(summary);
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'lib-card-actions';
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'primary small';
+  editBtn.textContent = '✏️ Editar roster';
+  editBtn.onclick = (e) => { e.stopPropagation(); state.openBuildId = cb.id; renderPanel(); };
+  actionsRow.appendChild(editBtn);
+  card.appendChild(actionsRow);
+
+  return card;
+}
+
 function buildMyBuildsSection() {
   const wrap = document.createElement('div');
   wrap.className = 'my-builds-section';
@@ -13944,7 +13944,7 @@ function buildMyBuildsSection() {
 
   const note = document.createElement('div');
   note.className = 'solo-note';
-  note.innerHTML = `Acá arma y guarda SUS PROPIAS builds el gremio, sin límite — elegí arma y equipo tocando cada casilla, como en Composición. Quedan guardadas en este dispositivo; para que las vea el resto, tocá "⬇ Exportar" arriba y mandales el archivo — al importarlo, las builds de ahí se SUMAN a las suyas, no las reemplazan.`;
+  note.innerHTML = `Acá arma y guarda SUS PROPIAS builds el gremio, sin límite — individuales (arma + equipo, tocando cada casilla) o grupales (roster completo, del tamaño que quieras: 20 para ZVZ, 9, 7, o lo que necesites). Quedan guardadas en este dispositivo y se sincronizan en vivo con el resto del gremio si tenés la base de datos compartida configurada; si no, para que las vea el resto tocá "⬇ Exportar" arriba y mandales el archivo — al importarlo, las builds de ahí se SUMAN a las suyas, no las reemplazan.`;
   wrap.appendChild(note);
 
   const filterBar = document.createElement('div');
@@ -13956,6 +13956,33 @@ function buildMyBuildsSection() {
   searchInput.autocomplete = 'off';
   searchInput.value = myBuildsFilter.search;
   filterBar.appendChild(searchInput);
+
+  const typeRow = document.createElement('div');
+  typeRow.className = 'lib-filter-row';
+  const typeLabel = document.createElement('span');
+  typeLabel.className = 'lib-filter-label';
+  typeLabel.textContent = 'Tipo:';
+  typeRow.appendChild(typeLabel);
+  const typeOptions = [
+    { key: 'all', label: 'Todas', icon: '📚' },
+    { key: 'solo', label: 'Individuales', icon: '🗡️' },
+    { key: 'group', label: 'Grupales', icon: '👥' },
+  ];
+  const typePills = [];
+  typeOptions.forEach(opt => {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'lib-pill' + (myBuildsFilter.type === opt.key ? ' active' : '');
+    pill.innerHTML = `<span>${opt.icon}</span><span>${opt.label}</span>`;
+    pill.onclick = () => {
+      myBuildsFilter.type = opt.key;
+      typePills.forEach(p => p.el.classList.toggle('active', p.key === opt.key));
+      applyMyBuildsFilters();
+    };
+    typeRow.appendChild(pill);
+    typePills.push({ key: opt.key, el: pill });
+  });
+  filterBar.appendChild(typeRow);
 
   const tagRow = document.createElement('div');
   tagRow.className = 'lib-filter-row';
@@ -13989,22 +14016,24 @@ function buildMyBuildsSection() {
   grid.className = 'lib-grid';
   const emptyMsg = document.createElement('div');
   emptyMsg.className = 'lib-empty';
-  emptyMsg.textContent = 'Ninguna build propia coincide con esa búsqueda o etiqueta.';
+  emptyMsg.textContent = 'Ninguna build propia coincide con esa búsqueda, etiqueta o tipo.';
   grid.appendChild(emptyMsg);
 
   const entries = state.customBuilds.map(cb => {
-    const el = buildCustomBuildCard(cb);
+    const type = buildTypeOf(cb);
+    const el = type === 'group' ? buildGroupBuildCard(cb) : buildCustomBuildCard(cb);
     grid.appendChild(el);
-    return { el, cb, searchText: normalizeSearch(cb.name + ' ' + (cb.tags || []).join(' ')) };
+    return { el, cb, type, searchText: normalizeSearch(cb.name + ' ' + (cb.tags || []).join(' ')) };
   });
   wrap.appendChild(grid);
 
   function applyMyBuildsFilters() {
     const q = normalizeSearch(searchInput.value);
     let visible = 0;
-    entries.forEach(({ el, cb, searchText }) => {
+    entries.forEach(({ el, cb, type, searchText }) => {
       let ok = true;
-      if (myBuildsFilter.tag !== 'all') ok = (cb.tags || []).includes(myBuildsFilter.tag);
+      if (myBuildsFilter.type !== 'all') ok = type === myBuildsFilter.type;
+      if (ok && myBuildsFilter.tag !== 'all') ok = (cb.tags || []).includes(myBuildsFilter.tag);
       if (ok && q) ok = searchText.includes(q);
       el.style.display = ok ? '' : 'none';
       if (ok) visible++;
@@ -14016,18 +14045,39 @@ function buildMyBuildsSection() {
   searchInput.oninput = () => { myBuildsFilter.search = searchInput.value; applyMyBuildsFilters(); };
   applyMyBuildsFilters();
 
-  const addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.className = 'small ghost my-build-add-btn';
-  addBtn.textContent = '+ Agregar build';
-  addBtn.title = 'Crear otra build propia — sin límite';
-  addBtn.disabled = !isEditor();
-  addBtn.onclick = () => {
+  const addRow = document.createElement('div');
+  addRow.className = 'my-builds-add-row';
+  const addSoloBtn = document.createElement('button');
+  addSoloBtn.type = 'button';
+  addSoloBtn.className = 'small ghost my-build-add-btn';
+  addSoloBtn.textContent = '+ Build individual';
+  addSoloBtn.title = 'Crear una build individual (arma + equipo) — sin límite';
+  addSoloBtn.disabled = !isEditor();
+  addSoloBtn.onclick = () => {
     if (!requireEditor('crear builds')) return;
     state.customBuilds.push(newCustomBuild(`Mi build ${state.customBuilds.length + 1}`));
     renderPanel();
   };
-  wrap.appendChild(addBtn);
+  addRow.appendChild(addSoloBtn);
+
+  const addGroupBtn = document.createElement('button');
+  addGroupBtn.type = 'button';
+  addGroupBtn.className = 'small ghost my-build-add-btn';
+  addGroupBtn.textContent = '+ Build grupal';
+  addGroupBtn.title = 'Crear una build grupal (roster del tamaño que quieras) — sin límite';
+  addGroupBtn.disabled = !isEditor();
+  addGroupBtn.onclick = () => {
+    if (!requireEditor('crear builds')) return;
+    const suggested = `Build grupal ${state.customBuilds.filter(cb => buildTypeOf(cb) === 'group').length + 1}`;
+    const nn = prompt('Nombre para la nueva build grupal:', suggested);
+    if (nn === null) return;
+    const nb = newGroupBuild(nn.trim() || suggested);
+    state.customBuilds.push(nb);
+    state.openBuildId = nb.id;
+    renderPanel();
+  };
+  addRow.appendChild(addGroupBtn);
+  wrap.appendChild(addRow);
 
   return wrap;
 }
@@ -14048,7 +14098,7 @@ function buildBuildsLibraryPanel() {
 
   const note = document.createElement('div');
   note.className = 'solo-note';
-  note.innerHTML = `Catálogo de referencia con las ${MASTER_WEAPONS.length} builds de la herramienta — arma + set completo de armadura. Es solo para consultar: para armar una composición real usá Composición, Solitario, Avalón, o "✍️ Mis builds" de arriba. Tocá "📋 Copiar" en cualquier tarjeta para pegarla directo en Discord.`;
+  note.innerHTML = `Catálogo de referencia con las ${MASTER_WEAPONS.length} builds de la herramienta — arma + set completo de armadura. Es solo para consultar: para armar una build real usá "✍️ Mis builds" de arriba. Tocá "📋 Copiar" en cualquier tarjeta para pegarla directo en Discord.`;
   wrap.appendChild(note);
 
   const filterBar = document.createElement('div');
@@ -14342,20 +14392,119 @@ function serializeState() {
     version: 2,
     guildName: state.guildName,
     mode: state.mode,
-    lastCompMode: state.lastCompMode,
-    lastSoloMode: state.lastSoloMode,
-    lastAvalonMode: state.lastAvalonMode,
-    zvzVariant: state.zvzVariant,
-    comps: state.comps,
     balances: state.balances,
-    soloOverrides: state.soloOverrides,
     customBuilds: state.customBuilds,
+    migratedGroupBuilds: state.migratedGroupBuilds,
     /* Habilidades elegidas por arma (ver ABILITY_PICK_KEY) — viven en una
        clave de localStorage aparte, pero se suman acá para que el respaldo
        de "Exportar todo" sea realmente TODO lo que se haya hecho en la
-       herramienta, no solo las composiciones. */
+       herramienta, no solo las builds. */
     abilityPicks: loadAbilityPicks(),
   }, null, 2);
+}
+
+/* ---------------- Migración de datos viejos a Builds ----------------
+   Antes de unificar todo en la pestaña Builds, Composición/Avalón guardaban
+   rosters en `comps` (por modalidad) y Solitario en `soloOverrides` (por
+   build fija). Esta migración corre UNA sola vez (ver state.migratedGroupBuilds,
+   un campo sincronizado) y convierte esos datos viejos en customBuilds
+   nuevos, para que ninguna composición ni build en solitario que el gremio
+   ya tenía guardada desaparezca con la actualización. */
+
+/* Normaliza CUALQUIERA de los dos formatos viejos de `comps` que llegó a
+   existir (con builds con nombre, o el bien viejo de un solo roster suelto
+   por modalidad) a una única forma { modo: { list: [...] } }, o null si no
+   hay nada de eso en `data`. */
+function normalizeLegacyComps(data) {
+  if (data.comps && typeof data.comps === 'object') return data.comps;
+  if (data.zvzGroups || data.grupal || data.estatica || data.avalon_azul || data.avalon_dorado) {
+    const out = {};
+    if (Array.isArray(data.zvzGroups) && data.zvzGroups.length) {
+      out.zvz = { list: data.zvzGroups.map((roster, i) => ({ id: uid(), name: `Grupo ${i + 1}`, roster })) };
+    }
+    ['grupal', 'estatica', 'avalon_azul', 'avalon_dorado'].forEach(m => {
+      if (Array.isArray(data[m]) && data[m].length) {
+        out[m] = { list: [{ id: uid(), name: `${m} 1`, roster: data[m] }] };
+      }
+    });
+    return out;
+  }
+  return null;
+}
+
+const LEGACY_MODE_LABELS = { zvz: 'ZVZ', grupal: 'Grupales', estatica: 'Estática', avalon_azul: 'Avalón Azul', avalon_dorado: 'Avalón Dorado' };
+
+/* Devuelve la lista de customBuilds NUEVOS (con id nuevo) que representan
+   todo lo que hubiera en `data.comps`/`data.zvzGroups`/etc. y en
+   `data.soloOverrides` — no toca `state` para nada, es pura. */
+function migrateLegacyCompsAndSolo(data) {
+  const out = [];
+  const legacyComps = normalizeLegacyComps(data);
+  if (legacyComps) {
+    Object.keys(LEGACY_MODE_LABELS).forEach(mode => {
+      const bucket = legacyComps[mode];
+      if (!bucket || !Array.isArray(bucket.list)) return;
+      bucket.list.forEach(entry => {
+        if (!entry || !Array.isArray(entry.roster)) return;
+        out.push({
+          id: uid(),
+          name: entry.name || LEGACY_MODE_LABELS[mode],
+          tags: [LEGACY_MODE_LABELS[mode]],
+          type: 'group',
+          roster: entry.roster,
+        });
+      });
+    });
+  }
+  if (data.soloOverrides && typeof data.soloOverrides === 'object') {
+    SOLO_MODES.forEach(soloMode => {
+      (SOLO_BUILDS[soloMode] || []).forEach(b => {
+        const ov = data.soloOverrides[b.id] || null;
+        out.push({
+          id: uid(),
+          name: b.label,
+          tags: [soloMode === 'solo_pve' ? 'PvE' : 'PvP'],
+          type: 'solo',
+          customWeapon: (ov && ov.weapon) || null,
+          gear: (ov && ov.gear) || {},
+        });
+      });
+    });
+  }
+  return out;
+}
+
+/* Corre la migración una sola vez — se llama tanto desde applyState()
+   (importar un archivo / autoguardado local) como desde applyRemoteState()
+   (snapshot de Firebase), SIEMPRE después de que `state.customBuilds` ya
+   tenga su valor base para este `data` (el merge/reemplazo normal) — las
+   builds migradas se agregan ARRIBA de eso, nunca antes, para no perderlas
+   si algo más las llegara a pisar. Una vez migrado, se marca el flag para
+   siempre (local y, si hay sync, para todo el gremio) y no se vuelve a
+   correr — evita duplicar builds en cada carga. */
+function applyLegacyMigrationIfNeeded(data) {
+  if (!data) return;
+  if (data.migratedGroupBuilds) { state.migratedGroupBuilds = true; return; }
+  if (state.migratedGroupBuilds) return; // ya se migró antes (en este dispositivo u otro)
+  const hasLegacy = !!normalizeLegacyComps(data) || (data.soloOverrides && typeof data.soloOverrides === 'object');
+  // OJO: si este `data` puntual no trae nada viejo para migrar, NO se marca
+  // el flag todavía — a propósito. Puede ser que este `data` sea el estado
+  // local ya en formato nuevo (nada que migrar acá) mientras Firebase
+  // todavía tenga los datos viejos reales del gremio sin migrar: si
+  // marcáramos el flag acá, cuando ese snapshot real llegara después ya
+  // no se migraría nunca y se perderían esos datos.
+  if (!hasLegacy) return;
+  const migrated = migrateLegacyCompsAndSolo(data);
+  if (migrated.length) {
+    const existingIds = new Set(state.customBuilds.map(cb => cb.id));
+    migrated.forEach(cb => {
+      if (!existingIds.has(cb.id)) {
+        state.customBuilds.push(cb);
+        existingIds.add(cb.id);
+      }
+    });
+  }
+  state.migratedGroupBuilds = true;
 }
 
 /* Aplica un objeto de estado (exportado con serializeState, o leído del
@@ -14366,38 +14515,10 @@ function serializeState() {
 function applyState(data) {
   if (!data || typeof data !== 'object') return;
   state.guildName = data.guildName || state.guildName;
-  state.mode = data.mode || state.mode;
-  state.zvzVariant = (data.zvzVariant && ZVZ_VARIANTS[data.zvzVariant]) ? data.zvzVariant : state.zvzVariant;
-  if (data.comps && typeof data.comps === 'object') {
-    COMPOSABLE_MODES.forEach(m => {
-      const incoming = data.comps[m];
-      if (incoming && Array.isArray(incoming.list) && incoming.list.length) {
-        state.comps[m] = {
-          active: Math.min(Math.max(0, incoming.active || 0), incoming.list.length - 1),
-          list: incoming.list,
-        };
-      }
-    });
-  } else if (data.zvzGroups || data.grupal || data.estatica || data.avalon_azul || data.avalon_dorado) {
-    // Respaldo de una versión anterior (sin builds con nombre) — se migra
-    // cada roster suelto a una lista de 1 sola build llamada "Grupo N"/"1".
-    if (Array.isArray(data.zvzGroups) && data.zvzGroups.length) {
-      state.comps.zvz = {
-        active: Math.min(Math.max(0, data.zvzActive || 0), data.zvzGroups.length - 1),
-        list: data.zvzGroups.map((roster, i) => ({ id: uid(), name: `Grupo ${i + 1}`, roster })),
-      };
-    }
-    ['grupal', 'estatica', 'avalon_azul', 'avalon_dorado'].forEach(m => {
-      if (Array.isArray(data[m]) && data[m].length) {
-        state.comps[m] = { active: 0, list: [{ id: uid(), name: `${MODES[m].label} 1`, roster: data[m] }] };
-      }
-    });
-  }
-  state.lastCompMode = COMP_MODES.includes(state.mode) ? state.mode : (data.lastCompMode || state.lastCompMode || 'zvz');
-  state.lastSoloMode = SOLO_MODES.includes(state.mode) ? state.mode : (data.lastSoloMode || state.lastSoloMode || 'solo_pve');
-  state.lastAvalonMode = AVALON_MODES.includes(state.mode) ? state.mode : (data.lastAvalonMode || state.lastAvalonMode || 'avalon_azul');
+  /* data.mode puede traer un valor de una versión vieja (zvz/solo_pve/etc.)
+     que ya no existe — se ignora en ese caso y se deja el modo actual. */
+  if (data.mode === 'balance' || data.mode === 'backups' || data.mode === 'builds') state.mode = data.mode;
   state.balances = data.balances || state.balances;
-  state.soloOverrides = data.soloOverrides || state.soloOverrides;
   /* customBuilds se SUMA en vez de reemplazar — a diferencia del resto del
      estado, esto es lo que permite que el gremio junte builds de varios
      archivos exportados sin perder las propias en cada importación. Se
@@ -14412,6 +14533,7 @@ function applyState(data) {
       }
     });
   }
+  applyLegacyMigrationIfNeeded(data);
   /* abilityPicks también se SUMA (no reemplaza) — mismo criterio que
      customBuilds: importar un respaldo no debe borrar habilidades que ya
      habías elegido en este dispositivo para otras armas. */
@@ -14746,10 +14868,10 @@ function buildBackupsPanel() {
 
 function textReport() {
   const lines = [];
-  lines.push(`═══ ${state.guildName || 'PVPX'} — Composición Albion Online ═══`);
+  lines.push(`═══ ${state.guildName || 'PVPX'} — Builds Albion Online ═══`);
   lines.push('');
-  function rosterBlock(title, roster, max) {
-    lines.push(`### ${title} (${roster.length}/${max})`);
+  function rosterBlock(title, roster) {
+    lines.push(`### ${title} (${roster.length} jugador${roster.length === 1 ? '' : 'es'})`);
     roster.forEach((s, i) => {
       const def = ROLES[s.role];
       const w = s.customWeapon || def.weapons[s.weaponIdx] || def.weapons[0];
@@ -14768,39 +14890,31 @@ function textReport() {
     });
     lines.push('');
   }
-  if (state.mode === 'zvz') {
-    lines.push(`Doctrina ZVZ: ${ZVZ_VARIANTS[state.zvzVariant].label}`);
-    lines.push('');
-    state.comps.zvz.list.forEach(entry => rosterBlock(`ZVZ — ${entry.name}`, entry.roster, 20));
-  } else if (COMPOSABLE_MODES.includes(state.mode)) {
-    const bucket = state.comps[state.mode];
-    const entry = bucket.list[bucket.active];
-    rosterBlock(`${MODES[state.mode].label} — ${entry.name}`, entry.roster, MODES[state.mode].max);
-  } else if (SOLO_MODES.includes(state.mode)) {
-    lines.push(`### Builds en solitario — ${MODES[state.mode].label}`);
-    lines.push('');
-    SOLO_BUILDS[state.mode].forEach((b, i) => {
-      const ov = soloOverrideFor(b);
-      const weapon = ov.weapon || b.weapon;
-      const slot = { gear: ov.gear };
-      const pieces = [
-        effectivePiece(slot, weapon, 'helm'),
-        effectivePiece(slot, weapon, 'chest'),
-        effectivePiece(slot, weapon, 'boots'),
-        effectivePiece(slot, weapon, 'cape'),
-        effectivePiece(slot, weapon, 'off'),
-      ];
-      const gear = pieces.filter(Boolean).map(p => p[0]).join(' / ');
-      lines.push(`${i + 1}. ${b.icon} ${b.label} | ${weapon.name}${gear ? ' [' + gear + ']' : ''}`);
-    });
-    lines.push('');
-  } else if (state.mode === 'balance') {
+  if (state.mode === 'balance') {
     const total = state.balances.reduce((s, p) => s + p.balance, 0);
     lines.push(`### Balance de jugadores (saldo total: ${fmtMoney(total)})`);
     [...state.balances].sort((a, b) => b.balance - a.balance).forEach((p, i) => {
       lines.push(`${i + 1}. ${p.name} — ${fmtMoney(p.balance)}`);
     });
     lines.push('');
+    return lines.join('\n');
+  }
+  const build = currentOpenBuild();
+  if (build) {
+    rosterBlock(`Build grupal — ${build.name}`, build.roster);
+    return lines.join('\n');
+  }
+  // No hay ninguna build grupal abierta — se listan todas las builds
+  // guardadas del gremio a modo de índice.
+  if (state.customBuilds.length) {
+    lines.push('### Mis builds');
+    state.customBuilds.forEach((cb, i) => {
+      const type = buildTypeOf(cb);
+      lines.push(`${i + 1}. ${type === 'group' ? '👥' : '🗡️'} ${cb.name}${type === 'group' ? ` (${cb.roster.length} jugadores)` : ''}`);
+    });
+    lines.push('');
+  } else {
+    lines.push('(Todavía no hay builds guardadas)');
   }
   return lines.join('\n');
 }
@@ -14815,22 +14929,13 @@ function textReport() {
    pegar con Ctrl+V en el chat de Discord), descargarla como PNG, o copiar
    solo el texto. */
 
-/* Roster + metadatos de la build actualmente mostrada, sin importar la
-   pestaña (ZVZ toma el grupo activo, no todos los grupos a la vez — cada
-   grupo se anuncia por separado). Devuelve null en Solitario/Balance,
-   donde no aplica una "build" para invitar gente. */
+/* Roster + metadatos de la build grupal actualmente ABIERTA en el editor
+   (ver state.openBuildId) — devuelve null si no hay ninguna abierta (estás
+   en la biblioteca de "Mis builds", en Balance o en Respaldos), donde no
+   aplica una "build" puntual para invitar gente. */
 function currentInvitationRoster() {
-  if (state.mode === 'zvz') {
-    const bucket = state.comps.zvz;
-    const entry = bucket.list[bucket.active];
-    return entry ? { entry, roster: entry.roster, label: `ZVZ · ${ZVZ_VARIANTS[state.zvzVariant].label}` } : null;
-  }
-  if (COMPOSABLE_MODES.includes(state.mode)) {
-    const bucket = state.comps[state.mode];
-    const entry = bucket.list[bucket.active];
-    return entry ? { entry, roster: entry.roster, label: MODES[state.mode].label } : null;
-  }
-  return null;
+  const build = currentOpenBuild();
+  return build ? { entry: build, roster: build.roster, label: '📚 Build' } : null;
 }
 
 function invitationGearLine(slot) {
@@ -14931,14 +15036,16 @@ function getFirebaseDb() {
    sesión iniciada se ve reflejado en las demás pantallas casi al instante.
 
    Qué se sincroniza (y por qué eso, no más):
-   - guildName, doctrina ZVZ (zvzVariant), composiciones (comps), balance
-     de plata (balances), overrides de equipo en Solitario (soloOverrides)
-     y "Mis builds" (customBuilds) — todo dato que el gremio arma en
-     conjunto y tiene sentido que todos vean igual.
+   - guildName, balance de plata (balances), "Mis builds" (customBuilds,
+     tanto individuales como grupales) y migratedGroupBuilds (para que la
+     migración de datos viejos — ver applyLegacyMigrationIfNeeded — corra
+     una sola vez para todo el gremio, no una vez por dispositivo) — todo
+     dato que el gremio arma en conjunto y tiene sentido que todos vean
+     igual.
    NO se sincroniza (queda 100% local a cada dispositivo, a propósito):
-   - en qué pestaña estás parado (mode/lastCompMode/lastSoloMode/
-     lastAvalonMode) — si no, con que alguien cambie de pestaña en su
-     celular le saltaría la pantalla a todos los demás;
+   - en qué pestaña estás parado ni qué build tenés abierta (mode/
+     openBuildId) — si no, con que alguien cambie de pestaña en su celular
+     le saltaría la pantalla a todos los demás;
    - las habilidades elegidas por arma (ABILITY_PICK_KEY) — es elección
      personal de cada uno, ver el comentario ahí arriba;
    - la sesión iniciada (AUTH_KEY) — cada dispositivo inicia sesión aparte.
@@ -14947,11 +15054,42 @@ function getFirebaseDb() {
    defecto), toda esta sección queda inactiva sin tocar nada más: la
    herramienta sigue funcionando exactamente igual que siempre, 100% local
    a este navegador, con Exportar/Importar como única forma de pasar datos
-   entre dispositivos — igual que antes de que existiera esta sección. */
-const SYNC_FIELDS = ['guildName', 'zvzVariant', 'comps', 'balances', 'soloOverrides', 'customBuilds'];
+   entre dispositivos — igual que antes de que existiera esta sección.
+
+   ---- Sincronización POR REGISTRO, no en un solo bloque (importante) ----
+   Versiones anteriores sincronizaban customBuilds/balances como UN SOLO
+   array gigante: cada guardado subía TODO de nuevo, pisando lo que hubiera
+   en Firebase. Eso funcionaba mientras una sola persona editaba a la vez,
+   pero con varias personas editando junto es un desastre: si Diego edita
+   la build "ZVZ Kite" y, un segundo después, Barto (que todavía tenía en
+   su pantalla una copia de ANTES del cambio de Diego) guarda un cambio en
+   "Grupales", su guardado subía su copia completa del array — que todavía
+   no tenía el cambio de Diego — y lo borraba sin que nadie lo notara.
+   Cuantas más personas editan a la vez, más fácil es que esto pase.
+
+   Ahora cada build y cada jugador de Balance vive en su PROPIO lugar
+   dentro de Firebase (guildState/customBuilds/<id>, guildState/balances/<id>)
+   y se sube/baja de a uno, no como bloque:
+   - Si Diego edita una build y Barto edita OTRA al mismo tiempo, cada
+     cambio se guarda en su propio lugar — ninguno pisa al otro, sin
+     importar quién guarde primero ni en qué orden lleguen los cambios.
+   - Mientras ESTE dispositivo tiene una build con cambios propios
+     todavía sin confirmar en Firebase (por ejemplo, mientras alguien está
+     tipeando ahí mismo), un cambio que llegue de otro dispositivo para
+     ESA MISMA build no la pisa — se espera a que este dispositivo termine
+     de guardar la suya primero (ver lastSyncedRecords/isRecordDirty). Si
+     dos personas editan EXACTAMENTE la misma build al mismo tiempo, gana
+     la que guarda última — como en cualquier documento compartido — pero
+     ya no le puede borrar el trabajo a nadie que esté editando otra cosa.
+   - Si mientras tanto llega un cambio remoto que sí aplica (de otra build,
+     de Balance, etc.) mientras esta persona está escribiendo en un campo
+     de texto en pantalla, el dato se actualiza igual por dentro pero la
+     pantalla no se redibuja hasta que termine de escribir (ver
+     isTypingInPanel/pendingRemoteRenderNeeded) — así nunca se le corta la
+     escritura ni pierde el foco a mitad de tipear un nombre. */
+
 let suppressSyncPush = false;
 let syncPushTimer = null;
-let lastPushedSyncJSON = null;
 let syncListenerAttached = false;
 /* Se pone en true recién cuando llega el PRIMER snapshot de Firebase (o se
    confirma que la base está vacía) — hasta entonces, scheduleSyncPush() no
@@ -14963,50 +15101,200 @@ let syncListenerAttached = false;
    y solo después empieza a mandar sus propios cambios. */
 let syncReady = false;
 
-function buildSyncPayload() {
-  const payload = {};
-  SYNC_FIELDS.forEach(k => { payload[k] = state[k]; });
-  return payload;
+/* Último valor de cada registro que este dispositivo sabe con certeza que
+   ya está confirmado en Firebase (ya sea porque lo subió él mismo, o
+   porque lo acaba de bajar de un snapshot remoto). Comparar contra esto es
+   lo que permite saber si un registro está "sucio" (con cambios locales
+   sin confirmar todavía) — ver isRecordDirty. */
+let lastSyncedRecords = {
+  guildName: null,
+  migratedGroupBuilds: null,
+  customBuilds: new Map(), // id -> JSON.stringify(registro) confirmado
+  balances: new Map(),
+};
+
+/* customBuilds/balances viven en MEMORIA como array (así casi ningún otro
+   código de la herramienta necesitó cambiar), pero en Firebase se guardan
+   como MAPA indexado por id — lo que permite escribir/borrar un registro
+   puntual sin tocar el resto. Esta función lee cualquiera de las dos
+   formas (mapa nuevo, o el array viejo de versiones anteriores a este
+   cambio — Diego ya tiene datos reales en ese formato) y siempre devuelve
+   un array plano. */
+function collectionToArray(raw) {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (raw && typeof raw === 'object') return Object.keys(raw).map(k => raw[k]).filter(Boolean);
+  return [];
 }
 
-/* Aplica un snapshot recibido de Firebase — a diferencia de applyState()
-   (pensada para IMPORTAR un archivo a mano, donde customBuilds se suma
-   para no perder lo propio), acá Firebase es la fuente de verdad del
-   gremio: se reemplaza cada campo tal cual llega, borrados incluidos, para
-   que este dispositivo quede en espejo exacto de lo que hay en la nube. */
-function applyRemoteState(data) {
+function isRecordDirty(collection, id, currentObj) {
+  const lastJSON = lastSyncedRecords[collection].get(id);
+  return lastJSON === undefined || lastJSON !== JSON.stringify(currentObj);
+}
+
+function markCollectionSynced(collection, arr) {
+  lastSyncedRecords[collection] = new Map(arr.filter(x => x && x.id).map(x => [x.id, JSON.stringify(x)]));
+}
+
+/* Combina el array LOCAL de una colección (customBuilds o balances) con lo
+   que acaba de llegar de Firebase, registro por registro:
+   - Si un id existe en ambos lados: se adopta el remoto, SALVO que este
+     dispositivo lo tenga sucio (cambios propios sin confirmar todavía) —
+     en ese caso se mantiene la versión local (se re-enviará sola en el
+     próximo guardado).
+   - Si un id ya no está en el remoto: se borra acá también, SALVO que
+     siga sucio localmente (recién creado en este dispositivo y todavía no
+     confirmado — no se borra solo).
+   - Si un id es nuevo en el remoto (no existía acá): se agrega. */
+function mergeCollection(collection, localArr, remoteRaw) {
+  const remoteArr = collectionToArray(remoteRaw);
+  const remoteById = new Map(remoteArr.filter(x => x && x.id).map(x => [x.id, x]));
+  const result = [];
+  const seen = new Set();
+  localArr.forEach(item => {
+    if (!item || !item.id) return;
+    seen.add(item.id);
+    const remoteItem = remoteById.get(item.id);
+    const dirty = isRecordDirty(collection, item.id, item);
+    if (remoteItem) {
+      if (dirty) {
+        result.push(item);
+      } else {
+        result.push(remoteItem);
+        lastSyncedRecords[collection].set(item.id, JSON.stringify(remoteItem));
+      }
+    } else if (dirty) {
+      result.push(item);
+    } else {
+      lastSyncedRecords[collection].delete(item.id);
+    }
+  });
+  remoteArr.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      result.push(item);
+      lastSyncedRecords[collection].set(item.id, JSON.stringify(item));
+    }
+  });
+  return result;
+}
+
+/* Mientras haya un <input>/<textarea> con foco DENTRO del panel principal
+   (un nombre de jugador, el buscador de "Mis builds", etc.), un cambio
+   remoto no debe redibujar la pantalla debajo de los dedos de quien está
+   escribiendo — perdería el foco y la sensación sería "se rompió la
+   página". El dato SÍ se actualiza igual por dentro (ver applyRemoteState);
+   solo el redibujado del DOM se pospone hasta que termine de escribir. */
+let pendingRemoteRenderNeeded = false;
+function isTypingInPanel() {
+  const el = document.activeElement;
+  const panel = document.getElementById('panel');
+  return !!(el && panel && panel.contains(el) && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'));
+}
+
+/* Aplica un snapshot recibido de Firebase. `isFirstSync` distingue dos
+   casos bien distintos:
+   - true (primera vez que este dispositivo se conecta): Firebase es la
+     verdad de partida, se adopta tal cual — igual que siempre, para poner
+     a este dispositivo al día con lo que ya tenía el gremio (ver
+     syncReady más arriba).
+   - false (una actualización en vivo, de acá en más): se mergea con
+     mergeCollection(), registro por registro, protegiendo lo que este
+     dispositivo tenga sin confirmar todavía — ver el comentario grande de
+     la sección. */
+function applyRemoteState(data, isFirstSync) {
   if (!data || typeof data !== 'object') return;
   suppressSyncPush = true;
   try {
-    if (typeof data.guildName === 'string' && data.guildName.trim()) state.guildName = data.guildName;
-    if (data.zvzVariant && ZVZ_VARIANTS[data.zvzVariant]) state.zvzVariant = data.zvzVariant;
-    if (data.comps && typeof data.comps === 'object') {
-      COMPOSABLE_MODES.forEach(m => {
-        if (data.comps[m] && Array.isArray(data.comps[m].list)) state.comps[m] = data.comps[m];
-      });
+    if (isFirstSync) {
+      if (typeof data.guildName === 'string' && data.guildName.trim()) state.guildName = data.guildName;
+      state.balances = collectionToArray(data.balances);
+      state.customBuilds = collectionToArray(data.customBuilds);
+      lastSyncedRecords.guildName = state.guildName;
+      markCollectionSynced('balances', state.balances);
+      markCollectionSynced('customBuilds', state.customBuilds);
+    } else {
+      if (typeof data.guildName === 'string' && data.guildName.trim() && lastSyncedRecords.guildName === state.guildName) {
+        state.guildName = data.guildName;
+        lastSyncedRecords.guildName = data.guildName;
+      }
+      state.balances = mergeCollection('balances', state.balances, data.balances);
+      state.customBuilds = mergeCollection('customBuilds', state.customBuilds, data.customBuilds);
     }
-    if (Array.isArray(data.balances)) state.balances = data.balances;
-    if (data.soloOverrides && typeof data.soloOverrides === 'object') state.soloOverrides = data.soloOverrides;
-    if (Array.isArray(data.customBuilds)) state.customBuilds = data.customBuilds;
+    if (data.migratedGroupBuilds) lastSyncedRecords.migratedGroupBuilds = true;
+    // La migración corre DESPUÉS del merge/reemplazo de arriba (nunca
+    // antes) y agrega sus builds ARRIBA de esa base — así nunca se pisan
+    // entre sí. Las builds que agrega quedan "sucias" (todavía no
+    // confirmadas en Firebase) a propósito, para que el próximo guardado
+    // las suba solas.
+    applyLegacyMigrationIfNeeded(data);
+    if (state.openBuildId && !state.customBuilds.some(cb => cb.id === state.openBuildId)) state.openBuildId = null;
     updateGuildBranding();
-    renderAll();
+    if (isTypingInPanel()) {
+      // El dato ya quedó actualizado arriba — solo se pospone el
+      // redibujado del panel para no interrumpir a quien está escribiendo.
+      pendingRemoteRenderNeeded = true;
+      saveToStorage();
+    } else {
+      renderAll();
+    }
   } finally {
-    // El renderAll() de arriba ya disparó saveToStorage() → scheduleSyncPush(),
-    // pero quedó frenado por suppressSyncPush; acá se marca este payload
-    // como "ya sincronizado" para no reenviarlo de eco en cuanto se libere.
-    lastPushedSyncJSON = JSON.stringify(buildSyncPayload());
     suppressSyncPush = false;
   }
 }
 
+/* Sube SOLO lo que cambió desde el último envío confirmado — una
+   actualización multi-path de Firebase (`update()` sobre la raíz) que
+   toca nada más que los registros realmente distintos: cada build/jugador
+   nuevo o editado se escribe en su propio path, y cada uno borrado
+   localmente se pone en `null` en su path — el resto de Firebase (lo que
+   estén editando otros dispositivos en paralelo) no se toca para nada. */
 function pushSyncStateNow() {
   const db = getFirebaseDb();
   if (!db) return;
-  const payload = buildSyncPayload();
-  const json = JSON.stringify(payload);
-  if (json === lastPushedSyncJSON) return; // sin cambios reales desde el último envío
-  lastPushedSyncJSON = json;
-  db.ref('guildState').set(payload).catch(err => {
+  const updates = {};
+  let hasUpdates = false;
+
+  if (state.guildName !== lastSyncedRecords.guildName) {
+    updates['guildState/guildName'] = state.guildName;
+    hasUpdates = true;
+  }
+  if (state.migratedGroupBuilds && lastSyncedRecords.migratedGroupBuilds !== true) {
+    updates['guildState/migratedGroupBuilds'] = true;
+    hasUpdates = true;
+  }
+
+  const diffCollection = (collection, arr) => {
+    const currentIds = new Set();
+    arr.forEach(item => {
+      if (!item || !item.id) return;
+      currentIds.add(item.id);
+      if (isRecordDirty(collection, item.id, item)) {
+        updates[`guildState/${collection}/${item.id}`] = item;
+        hasUpdates = true;
+      }
+    });
+    lastSyncedRecords[collection].forEach((_, id) => {
+      if (!currentIds.has(id)) {
+        updates[`guildState/${collection}/${id}`] = null;
+        hasUpdates = true;
+      }
+    });
+  };
+  diffCollection('customBuilds', state.customBuilds);
+  diffCollection('balances', state.balances);
+
+  if (!hasUpdates) return; // sin cambios reales desde el último envío confirmado
+
+  db.ref().update(updates).then(() => {
+    // Recién ahora que Firebase confirmó el envío se marca cada registro
+    // como sincronizado — si algo falla (ver .catch), lastSyncedRecords no
+    // cambia y el próximo guardado lo vuelve a intentar solo.
+    if (Object.prototype.hasOwnProperty.call(updates, 'guildState/guildName')) lastSyncedRecords.guildName = state.guildName;
+    if (Object.prototype.hasOwnProperty.call(updates, 'guildState/migratedGroupBuilds')) lastSyncedRecords.migratedGroupBuilds = true;
+    state.customBuilds.forEach(cb => { if (cb && cb.id) lastSyncedRecords.customBuilds.set(cb.id, JSON.stringify(cb)); });
+    state.balances.forEach(p => { if (p && p.id) lastSyncedRecords.balances.set(p.id, JSON.stringify(p)); });
+    Array.from(lastSyncedRecords.customBuilds.keys()).forEach(id => { if (!state.customBuilds.some(cb => cb.id === id)) lastSyncedRecords.customBuilds.delete(id); });
+    Array.from(lastSyncedRecords.balances.keys()).forEach(id => { if (!state.balances.some(p => p.id === id)) lastSyncedRecords.balances.delete(id); });
+  }).catch(err => {
     console.error('No se pudo sincronizar con Firebase:', err);
   });
 }
@@ -15024,7 +15312,8 @@ function scheduleSyncPush() {
    de partida. Hasta que ese primer snapshot llega (o falla), scheduleSyncPush()
    queda frenado por syncReady — ver el comentario ahí arriba. De ahí en
    más, cualquier cambio que llegue de OTRO dispositivo se aplica en vivo
-   sin recargar la página. */
+   sin recargar la página, mergeado registro por registro (ver
+   applyRemoteState/mergeCollection). */
 function initFirebaseSync() {
   if (!FIREBASE_ENABLED || syncListenerAttached) return;
   const db = getFirebaseDb();
@@ -15035,12 +15324,12 @@ function initFirebaseSync() {
     const data = snap.val();
     if (first) {
       first = false;
-      if (data) applyRemoteState(data);
+      if (data) applyRemoteState(data, true);
       else pushSyncStateNow();
       syncReady = true;
       return;
     }
-    applyRemoteState(data);
+    applyRemoteState(data, false);
   }, (err) => {
     console.error('Sincronización con Firebase interrumpida:', err);
   });
@@ -16051,6 +16340,18 @@ document.addEventListener('DOMContentLoaded', () => {
   initFirebaseSync();
   initSyncBadge();
 
+  // Si un cambio remoto llegó mientras alguien escribía en un campo del
+  // panel (ver isTypingInPanel/pendingRemoteRenderNeeded en la sección de
+  // sincronización), acá se redibuja recién cuando esa persona termina de
+  // escribir y saca el foco de ese campo — así el dato ya actualizado se
+  // ve en pantalla sin haberle cortado la escritura en el momento.
+  document.getElementById('panel').addEventListener('focusout', () => {
+    if (pendingRemoteRenderNeeded) {
+      pendingRemoteRenderNeeded = false;
+      renderPanel();
+    }
+  });
+
   updateAuthUI();
   document.getElementById('btnAuth').onclick = () => {
     if (isEditor()) {
@@ -16070,11 +16371,11 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
 
   document.getElementById('btnCopy').onclick = () => {
-    openModal('Composición lista para Discord', textReport());
+    openModal('Build lista para Discord', textReport());
   };
   document.getElementById('btnInvite').onclick = () => {
     if (!currentInvitationRoster()) {
-      showToast('La invitación está disponible en Composición y Avalón — elegí una build primero');
+      showToast('Abrí una build grupal (Builds → ✏️ Editar roster) para generar su invitación');
       return;
     }
     openInvitationModal();
@@ -16152,15 +16453,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnReset').onclick = () => {
     if (!requireEditor('reiniciar')) return;
     if (state.mode === 'balance') { showToast('El balance no se reinicia desde acá — quitá jugadores uno por uno con el ✕'); return; }
-    if (SOLO_MODES.includes(state.mode)) {
-      if (!confirm('¿Restaurar el equipamiento por defecto de la build de esta pestaña? Se perderán el arma y las piezas que hayas cambiado a mano.')) return;
-      SOLO_BUILDS[state.mode].forEach(b => { state.soloOverrides[b.id] = { gear: {}, weapon: null }; });
-      renderPanel();
-      return;
-    }
-    if (!confirm('¿Reiniciar ESTA build a la plantilla sugerida? Se perderán los cambios de equipo hechos en esta build. (No afecta a tus otras builds guardadas, ni al Balance, ni a Solitario.)')) return;
-    const entry = currentCompEntry();
-    if (entry) entry.roster = buildSlotsFromTemplate(defaultTemplateFor(state.mode));
+    const build = currentOpenBuild();
+    if (!build) { showToast('Abrí una build grupal (✏️ Editar roster) para vaciar su roster — una build individual se edita tocando directamente sus piezas.'); return; }
+    if (!build.roster.length) return;
+    if (!confirm(`¿Vaciar el roster de "${build.name}"? Se perderán todos los jugadores y el equipo asignado. (No afecta a tus otras builds, ni al Balance.)`)) return;
+    build.roster = [];
     renderPanel();
   };
 
@@ -16181,9 +16478,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
 
     const modesHtml = `
-      <div class="guide-mode-item"><b>⚔️ ZVZ</b> — ${MODES.zvz.desc}. Podés crear hasta 4 grupos para un mismo evento (40/60/80 jugadores).</div>
-      <div class="guide-mode-item"><b>🛡️ Grupales</b> — ${MODES.grupal.desc} (small-scale, hellgates, roads).</div>
-      <div class="guide-mode-item"><b>⭐ Estática</b> — ${MODES.estatica.desc}.</div>
+      <div class="guide-mode-item">Desde la pestaña <b>📚 Builds</b> armás lo que necesites: builds <b>individuales</b> (arma + equipo, para vos solo) o builds <b>grupales</b> (roster completo, del tamaño que quieras — hasta ${GROUP_BUILD_MAX} jugadores). La barra "Empezar desde" del editor de roster te da un punto de partida ya armado para cada tipo de contenido:</div>
+      <div class="guide-mode-item"><b>⚔️ ZVZ (Kite/Brawl/Estándar)</b> — comps de guerra masiva de gremio, hasta 20+ jugadores por build.</div>
+      <div class="guide-mode-item"><b>🛡️ Grupales</b> — comp fija para contenido en grupo chico (small-scale, hellgates, roads).</div>
+      <div class="guide-mode-item"><b>⭐ Estática</b> — mazmorra estática de gremio.</div>
+      <div class="guide-mode-item"><b>🔵 Avalón Azul / 🟡 Avalón Dorado</b> — comps para los Caminos Avalonianos.</div>
     `;
 
     const html = `
@@ -16214,7 +16513,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderAll();
 });
-
 </script>
 </body>
 </html>
