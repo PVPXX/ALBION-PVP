@@ -106,6 +106,10 @@
     background:color-mix(in srgb, #e0a72a 16%, transparent);
     color:#e0a72a;border-color:color-mix(in srgb, #e0a72a 40%, transparent);
   }
+  .sync-badge.error{
+    background:color-mix(in srgb, #e0473a 18%, transparent);
+    color:#ff6b5e;border-color:color-mix(in srgb, #e0473a 45%, transparent);
+  }
 
   .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .toolbar-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -865,6 +869,14 @@
   .backup-row-date{font-family:'Cinzel',serif;font-weight:700;font-size:14px;color:var(--white);}
   .backup-row-meta{font-size:12.5px;color:var(--grey-dim);margin-top:2px;}
   .backup-row-actions{display:flex;gap:6px;flex-shrink:0;}
+  .backup-name-input{
+    display:block;width:100%;max-width:320px;background:transparent;border:1px solid transparent;
+    border-radius:6px;padding:3px 6px;margin:0 0 3px -6px;
+    font-family:'Cinzel',serif;font-weight:700;font-size:14px;color:var(--white);
+  }
+  .backup-name-input::placeholder{color:var(--grey-dim);font-weight:700;opacity:.7;}
+  .backup-name-input:hover{border-color:var(--border);background:var(--panel-2);}
+  .backup-name-input:focus{border-color:var(--red);background:var(--panel-2);outline:none;}
 
   footer{
     text-align:center;color:var(--grey-dim);font-size:11.5px;padding:24px;
@@ -1067,12 +1079,6 @@
     <div class="toolbar-group">
       <button class="ghost" id="btnCopy">📋 Copiar para Discord</button>
       <button class="ghost" id="btnInvite" title="Genera una tarjeta de invitación con la build actual para pegar en Discord">🎉 Invitación</button>
-    </div>
-    <div class="toolbar-divider"></div>
-    <div class="toolbar-group">
-      <button class="ghost small" id="btnExport" title="Descarga un respaldo completo: TODAS tus composiciones (ZVZ/Grupales/Estática/Avalón), el Balance, tus builds guardadas y las habilidades elegidas — guardalo antes de actualizar la página">⬇ Exportar todo</button>
-      <button class="ghost small" id="btnImportTrigger" title="Carga un respaldo .json exportado desde acá — se suma a lo que ya tenés, no lo borra">⬆ Importar todo</button>
-      <input type="file" id="btnImport" accept="application/json">
     </div>
     <div class="toolbar-divider"></div>
     <div class="toolbar-group">
@@ -12612,9 +12618,9 @@ const ZVZ_VARIANTS = {
    (zvz/grupal/estatica/avalon_*) se conservan igual en TEMPLATES — ahí las
    usa buildTemplateBar() como puntos de partida rápidos dentro de Builds. */
 const MODES = {
-  builds: { label: 'Builds', icon: '📚', desc: '"Mis builds": armá y guardá las builds propias del gremio — individuales (arma + equipo) o grupales (roster completo, del tamaño que quieras) — sin límite, con etiquetas para buscarlas. Más abajo, el catálogo de referencia con todas las builds de la herramienta — arma + set completo, filtrable por rol o tipo de arma y copiable para Discord (ese catálogo no es editable).' },
+  builds: { label: 'Builds', icon: '📚', desc: '"Mis builds": armá y guardá las builds propias del gremio — individuales (arma + equipo) o grupales (roster completo, del tamaño que quieras) — sin límite, con etiquetas para buscarlas.' },
   balance: { label: 'Balance', icon: '💰', desc: 'Saldo de plata por jugador — sumá, restá y consultá el balance de cada miembro del gremio.' },
-  backups: { label: 'Respaldos', icon: '🗄️', desc: 'Historial de respaldos exportados con "⬇ Exportar todo" desde este navegador — solo visible para admin.' },
+  backups: { label: 'Respaldos', icon: '🗄️', desc: 'Historial de respaldos hechos con "💾 Hacer respaldo" — solo visible para admin.' },
 };
 /* Tope de jugadores para una build grupal — antes cada modalidad tenía su
    propio máximo fijo (20 ZVZ, 6 Grupales, 9 Estática, 4/7 Avalón); ahora
@@ -13350,30 +13356,6 @@ function buildSoloStatsChart(stats, accent) {
   return wrap;
 }
 
-/* ---------------- Biblioteca de Builds ----------------
-   Galería de referencia con TODAS las builds ya definidas en la
-   herramienta (las de cada rol + las armas sueltas del catálogo completo,
-   el mismo MASTER_WEAPONS que usan los selectores de arma) — filtrable por
-   rol y por tipo de arma, con buscador. Es de solo lectura: para armar una
-   build real se usa "✍️ Mis builds" (más arriba, dentro de la misma
-   pestaña Builds); esto es un catálogo para consultar equipo rápido, con
-   un botón para copiar cada build y pegarla directo en Discord. */
-let buildsFilter = { search: '', role: 'all', family: 'all' };
-
-/* Para cada build (por nombre), a qué rol(es) de ROLES pertenece. Una
-   misma build puede repetirse en más de un rol; las armas sueltas
-   agregadas solo para completar el catálogo del juego no pertenecen a
-   ningún rol (quedan como "sin rol fijo"). */
-function buildRoleReverseMap() {
-  const map = {};
-  ROLE_KEYS.forEach(roleKey => {
-    (ROLES[roleKey].weapons || []).forEach(w => {
-      if (!map[w.name]) map[w.name] = [];
-      if (!map[w.name].includes(roleKey)) map[w.name].push(roleKey);
-    });
-  });
-  return map;
-}
 
 /* ---------------- Modal de información/habilidades de un arma ----------
    Usa WEAPON_ABILITIES (datos oficiales, ver comentario junto a esa
@@ -13495,148 +13477,8 @@ function openWeaponInfoModal(displayName, u) {
   openGuideModal('Información del arma', html);
 }
 
-/* ---------------- Etiquetas de "dónde se usa" cada build ----------------
-   A diferencia de las etiquetas de rol (que vienen de ROLES), estas salen
-   de recorrer TEMPLATES: para cada arma de MASTER_WEAPONS, en qué
-   modalidades (ZVZ Estándar/Kite/Brawl, Grupales, Estática, Avalón Azul/
-   Dorado) aparece como sugerencia por defecto. Es 100% de la propia
-   herramienta — no depende de ningún sitio externo.
----------------------------------------------------------------------- */
-const CONTENT_TYPE_LABELS = {
-  'zvz.estandar': 'ZVZ Estándar',
-  'zvz.kite': 'ZVZ Kite',
-  'zvz.brawl': 'ZVZ Brawl',
-  grupal: 'Grupales',
-  estatica: 'Estática',
-  avalon_azul: 'Avalón Azul',
-  avalon_dorado: 'Avalón Dorado',
-};
-
-function buildContentTypeReverseMap() {
-  const map = {};
-  const addFrom = (entries, tagKey) => {
-    entries.forEach(e => {
-      const w = ROLES[e.role] && ROLES[e.role].weapons[e.weaponIdx];
-      if (!w) return;
-      if (!map[w.name]) map[w.name] = [];
-      if (!map[w.name].includes(tagKey)) map[w.name].push(tagKey);
-    });
-  };
-  addFrom(TEMPLATES.zvz.estandar, 'zvz.estandar');
-  addFrom(TEMPLATES.zvz.kite, 'zvz.kite');
-  addFrom(TEMPLATES.zvz.brawl, 'zvz.brawl');
-  addFrom(TEMPLATES.grupal, 'grupal');
-  addFrom(TEMPLATES.estatica, 'estatica');
-  addFrom(TEMPLATES.avalon_azul, 'avalon_azul');
-  addFrom(TEMPLATES.avalon_dorado, 'avalon_dorado');
-  return map;
-}
-
-function buildLibraryCard(b, roles, contentTypes) {
-  const family = weaponFamilyOf(b.u);
-  const accent = roles.length ? (ROLE_ACCENT[roles[0]] || '#c8102e') : '#6b6b6b';
-
-  const card = document.createElement('div');
-  card.className = 'lib-card';
-  card.style.setProperty('--accent', accent);
-
-  const tagsWrap = document.createElement('div');
-  tagsWrap.className = 'lib-tags';
-  if (roles.length) {
-    roles.forEach(rk => {
-      const t = document.createElement('span');
-      t.className = 'lib-tag';
-      t.style.setProperty('--tag-accent', ROLE_ACCENT[rk] || '#c8102e');
-      t.textContent = `${ROLES[rk].icon} ${ROLES[rk].label}`;
-      tagsWrap.appendChild(t);
-    });
-  } else {
-    const t = document.createElement('span');
-    t.className = 'lib-tag neutral';
-    t.textContent = '⚔ Sin rol fijo';
-    tagsWrap.appendChild(t);
-  }
-  const famTag = document.createElement('span');
-  famTag.className = 'lib-tag family';
-  famTag.textContent = family.label;
-  tagsWrap.appendChild(famTag);
-  (contentTypes || []).forEach(ctKey => {
-    const t = document.createElement('span');
-    t.className = 'lib-tag content';
-    t.textContent = CONTENT_TYPE_LABELS[ctKey] || ctKey;
-    tagsWrap.appendChild(t);
-  });
-  card.appendChild(tagsWrap);
-
-  const title = document.createElement('div');
-  title.className = 'lib-card-title';
-  title.textContent = shortEsName(b.name);
-  title.title = b.name;
-  card.appendChild(title);
-
-  const doll = document.createElement('div');
-  doll.className = 'paperdoll lib-doll';
-  const weaponSlot = dollSlot(b.u ? [b.name, b.u] : null, '⚔️', 'Arma', 'weapon-slot');
-  if (!b.u) {
-    // Igual que en buildDoll: algunas "armas" son en realidad monturas sin
-    // ícono de arma propiamente dicho — se muestran como casilla llena con
-    // el nombre en vez de vacía.
-    weaponSlot.classList.remove('empty'); weaponSlot.classList.add('filled');
-    weaponSlot.title = b.name;
-    const nm = weaponSlot.querySelector('.doll-name');
-    if (nm) { nm.textContent = shortEsName(b.name); nm.title = b.name; }
-  }
-  doll.appendChild(weaponSlot);
-  doll.appendChild(dollSlot(b.food, b.food ? '🍖' : '—', 'Comida', 'food-slot' + (b.food ? '' : ' na')));
-  doll.appendChild(dollSlot(b.potion || DEFAULT_POTION, '🧪', 'Poción', 'potion-slot'));
-  doll.appendChild(dollSlot(b.helm, '🪖', 'Casco', 'helm-slot'));
-  doll.appendChild(dollSlot(b.cape, '🧣', 'Capa', 'cape-slot'));
-  doll.appendChild(dollSlot(b.chest, '👕', 'Pecho', 'chest-slot'));
-  doll.appendChild(dollSlot(b.off, b.off ? '📯' : '—', 'Off-hand', 'off-slot' + (b.off ? '' : ' na')));
-  doll.appendChild(dollSlot(b.boots, '👢', 'Botas', 'boots-slot'));
-  card.appendChild(doll);
-
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.className = 'ghost small lib-copy-btn';
-  copyBtn.textContent = '📋 Copiar';
-  copyBtn.title = 'Copiar esta build como texto para pegar en Discord';
-  copyBtn.onclick = () => {
-    const parts = [`⚔ ${shortEsName(b.name)}`];
-    if (b.helm) parts.push(`🪖 ${shortEsName(b.helm[0])}`);
-    if (b.chest) parts.push(`👕 ${shortEsName(b.chest[0])}`);
-    if (b.boots) parts.push(`👢 ${shortEsName(b.boots[0])}`);
-    if (b.cape) parts.push(`🧣 ${shortEsName(b.cape[0])}`);
-    if (b.off) parts.push(`📯 ${shortEsName(b.off[0])}`);
-    if (b.food) parts.push(`🍖 ${shortEsName(b.food[0])}`);
-    const potion = b.potion || DEFAULT_POTION;
-    if (potion) parts.push(`🧪 ${shortEsName(potion[0])}`);
-    navigator.clipboard.writeText(parts.join(' / '))
-      .then(() => showToast('Build copiada ✔'))
-      .catch(() => showToast('No se pudo copiar — copiala manualmente'));
-  };
-
-  const actionsRow = document.createElement('div');
-  actionsRow.className = 'lib-card-actions';
-  actionsRow.appendChild(copyBtn);
-
-  if (b.u && weaponAbilitiesFor(b.u)) {
-    const infoBtn = document.createElement('button');
-    infoBtn.type = 'button';
-    infoBtn.className = 'ghost small lib-info-btn';
-    infoBtn.textContent = 'ℹ️ Habilidades';
-    infoBtn.title = 'Ver info y habilidades disponibles de esta arma';
-    infoBtn.onclick = () => openWeaponInfoModal(b.name, b.u);
-    actionsRow.appendChild(infoBtn);
-  }
-  card.appendChild(actionsRow);
-
-  return card;
-}
-
 /* ---------------- "Mis builds" — builds propias del gremio ----------------
-   A diferencia del catálogo de abajo (fijo, generado por la herramienta a
-   partir de los datos del juego), esta sección la arma cada jugador a mano,
+   Esta sección la arma cada jugador a mano,
    de dos tipos posibles (cb.type):
      - 'solo'  → una build individual: arma + equipo elegido pieza por
                  pieza (antes vivía en la pestaña Solitario).
@@ -13944,7 +13786,7 @@ function buildMyBuildsSection() {
 
   const note = document.createElement('div');
   note.className = 'solo-note';
-  note.innerHTML = `Acá arma y guarda SUS PROPIAS builds el gremio, sin límite — individuales (arma + equipo, tocando cada casilla) o grupales (roster completo, del tamaño que quieras: 20 para ZVZ, 9, 7, o lo que necesites). Quedan guardadas en este dispositivo y se sincronizan en vivo con el resto del gremio si tenés la base de datos compartida configurada; si no, para que las vea el resto tocá "⬇ Exportar" arriba y mandales el archivo — al importarlo, las builds de ahí se SUMAN a las suyas, no las reemplazan.`;
+  note.innerHTML = `Acá arma y guarda SUS PROPIAS builds el gremio, sin límite — individuales (arma + equipo, tocando cada casilla) o grupales (roster completo, del tamaño que quieras: 20 para ZVZ, 9, 7, o lo que necesites). Quedan guardadas en este dispositivo y se sincronizan en vivo con el resto del gremio si tenés la base de datos compartida configurada.`;
   wrap.appendChild(note);
 
   const filterBar = document.createElement('div');
@@ -14083,133 +13925,9 @@ function buildMyBuildsSection() {
 }
 
 function buildBuildsLibraryPanel() {
-  const roleMap = buildRoleReverseMap();
-  const contentTypeMap = buildContentTypeReverseMap();
-
   const wrap = document.createElement('div');
   wrap.className = 'lib-panel';
-
   wrap.appendChild(buildMyBuildsSection());
-
-  const catalogDivider = document.createElement('h3');
-  catalogDivider.className = 'my-builds-heading';
-  catalogDivider.textContent = '📚 Catálogo oficial';
-  wrap.appendChild(catalogDivider);
-
-  const note = document.createElement('div');
-  note.className = 'solo-note';
-  note.innerHTML = `Catálogo de referencia con las ${MASTER_WEAPONS.length} builds de la herramienta — arma + set completo de armadura. Es solo para consultar: para armar una build real usá "✍️ Mis builds" de arriba. Tocá "📋 Copiar" en cualquier tarjeta para pegarla directo en Discord.`;
-  wrap.appendChild(note);
-
-  const filterBar = document.createElement('div');
-  filterBar.className = 'lib-filters';
-
-  const searchInput = document.createElement('input');
-  searchInput.type = 'text';
-  searchInput.className = 'lib-search';
-  searchInput.placeholder = `🔍 Buscar entre ${MASTER_WEAPONS.length} builds…`;
-  searchInput.autocomplete = 'off';
-  searchInput.value = buildsFilter.search;
-  filterBar.appendChild(searchInput);
-
-  const roleRow = document.createElement('div');
-  roleRow.className = 'lib-filter-row';
-  const roleLabel = document.createElement('span');
-  roleLabel.className = 'lib-filter-label';
-  roleLabel.textContent = 'Rol:';
-  roleRow.appendChild(roleLabel);
-  const roleOptions = [{ key: 'all', label: 'Todos', icon: '📚' }]
-    .concat(ROLE_KEYS.map(k => ({ key: k, label: ROLES[k].label, icon: ROLES[k].icon })))
-    .concat([{ key: 'none', label: 'Sin rol fijo', icon: '⚔️' }]);
-  const rolePills = [];
-  roleOptions.forEach(opt => {
-    const pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'lib-pill' + (buildsFilter.role === opt.key ? ' active' : '');
-    pill.style.setProperty('--tag-accent', ROLE_ACCENT[opt.key] || '#c8102e');
-    pill.innerHTML = `<span>${opt.icon}</span><span>${opt.label}</span>`;
-    pill.onclick = () => {
-      buildsFilter.role = opt.key;
-      rolePills.forEach(p => p.el.classList.toggle('active', p.key === opt.key));
-      applyFilters();
-    };
-    roleRow.appendChild(pill);
-    rolePills.push({ key: opt.key, el: pill });
-  });
-  filterBar.appendChild(roleRow);
-
-  const famRow = document.createElement('div');
-  famRow.className = 'lib-filter-row';
-  const famLabel = document.createElement('span');
-  famLabel.className = 'lib-filter-label';
-  famLabel.textContent = 'Tipo de arma:';
-  famRow.appendChild(famLabel);
-  const famSelect = document.createElement('select');
-  famSelect.className = 'lib-family-select';
-  const allFamOpt = document.createElement('option');
-  allFamOpt.value = 'all'; allFamOpt.textContent = 'Todas las armas';
-  famSelect.appendChild(allFamOpt);
-  WEAPON_PICKER_GROUPS.forEach(g => {
-    const opt = document.createElement('option');
-    opt.value = g.label;
-    opt.textContent = `${g.label} (${Object.keys(g.entries).length})`;
-    famSelect.appendChild(opt);
-  });
-  famSelect.value = buildsFilter.family;
-  famRow.appendChild(famSelect);
-  filterBar.appendChild(famRow);
-
-  const resetBtn = document.createElement('button');
-  resetBtn.type = 'button';
-  resetBtn.className = 'ghost small lib-reset-btn';
-  resetBtn.textContent = '✕ Limpiar filtros';
-  resetBtn.onclick = () => { buildsFilter = { search: '', role: 'all', family: 'all' }; renderPanel(); };
-  filterBar.appendChild(resetBtn);
-
-  wrap.appendChild(filterBar);
-
-  const countEl = document.createElement('div');
-  countEl.className = 'lib-count';
-  wrap.appendChild(countEl);
-
-  const grid = document.createElement('div');
-  grid.className = 'lib-grid';
-  const emptyMsg = document.createElement('div');
-  emptyMsg.className = 'lib-empty';
-  emptyMsg.textContent = 'Ninguna build coincide con esos filtros — probá con otra búsqueda o quitá algún filtro.';
-  grid.appendChild(emptyMsg);
-
-  const entries = MASTER_WEAPONS.map(b => {
-    const roles = roleMap[b.name] || [];
-    const contentTypes = contentTypeMap[b.name] || [];
-    const el = buildLibraryCard(b, roles, contentTypes);
-    grid.appendChild(el);
-    return { el, roles, family: weaponFamilyOf(b.u).label, searchText: normalizeSearch(b.name) };
-  });
-  wrap.appendChild(grid);
-
-  function applyFilters() {
-    buildsFilter.search = searchInput.value;
-    buildsFilter.family = famSelect.value;
-    const q = normalizeSearch(searchInput.value);
-    let visible = 0;
-    entries.forEach(({ el, roles, family, searchText }) => {
-      let ok = true;
-      if (buildsFilter.role === 'none') ok = !roles.length;
-      else if (buildsFilter.role !== 'all') ok = roles.includes(buildsFilter.role);
-      if (ok && buildsFilter.family !== 'all') ok = family === buildsFilter.family;
-      if (ok && q) ok = searchText.includes(q);
-      el.style.display = ok ? '' : 'none';
-      if (ok) visible++;
-    });
-    countEl.textContent = `${visible} de ${MASTER_WEAPONS.length} builds`;
-    emptyMsg.style.display = visible ? 'none' : '';
-  }
-
-  searchInput.oninput = applyFilters;
-  famSelect.onchange = applyFilters;
-  applyFilters();
-
   return wrap;
 }
 
@@ -14702,11 +14420,12 @@ function loadBackupHistory() {
     return Array.isArray(list) ? list : [];
   } catch (err) { return []; }
 }
-function saveBackupSnapshot(content) {
+function saveBackupSnapshot(content, name) {
   const entry = {
     ts: Date.now(),
     user: currentAuthUser() || '—',
     guildName: state.guildName || 'PVPX',
+    name: (name || '').trim(),
     content,
   };
   if (FIREBASE_ENABLED) {
@@ -14742,6 +14461,22 @@ function deleteBackupSnapshot(id) {
     localStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(list));
   } catch (err) {}
 }
+/* Cambia SOLO el nombre de un respaldo ya guardado (ver "✎ Renombrar" en la
+   pestaña Respaldos) — no toca su contenido ni su fecha. */
+function updateBackupName(id, name) {
+  const clean = (name || '').trim();
+  if (FIREBASE_ENABLED) {
+    const db = getFirebaseDb();
+    if (db) db.ref('backups/' + id + '/name').set(clean).catch(err => console.error('No se pudo renombrar el respaldo:', err));
+    return;
+  }
+  try {
+    const list = loadBackupHistory();
+    const entry = list.find(b => b.id === id);
+    if (entry) entry.name = clean;
+    localStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(list));
+  } catch (err) {}
+}
 function clearBackupHistory() {
   if (FIREBASE_ENABLED) {
     const db = getFirebaseDb();
@@ -14749,6 +14484,24 @@ function clearBackupHistory() {
     return;
   }
   try { localStorage.removeItem(BACKUP_HISTORY_KEY); } catch (err) {}
+}
+/* Restaura un respaldo DIRECTO sobre el estado actual — el botón "📥
+   Cargar" de cada fila. A diferencia de lo que antes era "Importar todo"
+   (bajar el .json y volver a subirlo a mano), esto aplica el contenido en
+   el momento. Usa el mismo applyState() de siempre: customBuilds y
+   abilityPicks se SUMAN a lo que ya tenías (no se pierde nada propio),
+   balances/nombre del gremio/modo se REEMPLAZAN por los del respaldo — el
+   mismo comportamiento que tuvo "Importar todo" toda la vida. */
+function loadBackupIntoState(content) {
+  try {
+    const data = JSON.parse(content);
+    applyState(data);
+    updateGuildBranding();
+    renderAll();
+    showToast('Respaldo cargado ✔ — todo tu progreso quedó restaurado');
+  } catch (err) {
+    showToast('Error al leer este respaldo ✕');
+  }
 }
 
 /* ---------------- Render: pestaña "Respaldos" (solo la ve admin) ----------------
@@ -14769,8 +14522,8 @@ function buildBackupsPanel() {
   note.className = 'guide-note';
   note.style.marginBottom = '18px';
   note.innerHTML = FIREBASE_ENABLED
-    ? 'Cada vez que alguien exporta con "⬇ Exportar todo" estando logueado (pvpx o admin), acá queda una copia — pensado para cuando se está iterando la página seguido y conviene tener respaldos a mano. <b>Se comparte entre todos los dispositivos</b> gracias a la base de datos en la nube: no importa desde qué celular o PC se haya exportado, admin las ve todas acá.'
-    : 'Cada vez que alguien exporta con "⬇ Exportar todo" estando logueado (pvpx o admin), acá queda una copia — pensado para cuando se está iterando la página seguido y conviene tener respaldos a mano. <b>Es local a este navegador</b>: si alguien exporta desde su propio celular o PC, esa copia se guarda EN ESE dispositivo, no aparece acá.';
+    ? 'Tocá "💾 Hacer respaldo" para guardar una copia del estado actual (todas las builds, el Balance y las habilidades elegidas) — pensado para tener puntos de restauración a mano. <b>Se comparte entre todos los dispositivos</b> gracias a la base de datos en la nube: no importa desde qué celular o PC se haya hecho, admin las ve todas acá. Con "📥 Cargar" se restaura un respaldo directo, sin tener que bajar ni volver a subir ningún archivo.'
+    : 'Tocá "💾 Hacer respaldo" para guardar una copia del estado actual (todas las builds, el Balance y las habilidades elegidas) — pensado para tener puntos de restauración a mano. <b>Es local a este navegador</b>: un respaldo hecho en otro celular o PC se guarda EN ESE dispositivo, no aparece acá. Con "📥 Cargar" se restaura un respaldo directo, sin tener que bajar ni volver a subir ningún archivo.';
   wrap.appendChild(note);
 
   const list = loadBackupHistory();
@@ -14787,6 +14540,23 @@ function buildBackupsPanel() {
     ? 'Cargando historial…'
     : `${list.length} respaldo${list.length === 1 ? '' : 's'} guardado${list.length === 1 ? '' : 's'}${FIREBASE_ENABLED ? '' : ' en este navegador'}`;
   headRow.appendChild(countEl);
+
+  const headBtns = document.createElement('div');
+  headBtns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+  const makeBackupBtn = document.createElement('button');
+  makeBackupBtn.type = 'button';
+  makeBackupBtn.className = 'small primary';
+  makeBackupBtn.textContent = '💾 Hacer respaldo';
+  makeBackupBtn.title = 'Guarda una copia del estado actual (builds, Balance y habilidades elegidas) en este historial';
+  makeBackupBtn.onclick = () => {
+    const fechaLabel = new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const nn = prompt('Nombre para este respaldo (opcional):', `Respaldo ${fechaLabel}`);
+    if (nn === null) return;
+    saveBackupSnapshot(serializeState(), nn);
+    renderPanel();
+    showToast('Respaldo guardado ✔');
+  };
+  headBtns.appendChild(makeBackupBtn);
   if (list.length) {
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
@@ -14801,8 +14571,9 @@ function buildBackupsPanel() {
       renderPanel();
       showToast('Historial de respaldos vaciado ✔');
     };
-    headRow.appendChild(clearBtn);
+    headBtns.appendChild(clearBtn);
   }
+  headRow.appendChild(headBtns);
   wrap.appendChild(headRow);
 
   if (fbUnreachable) {
@@ -14823,9 +14594,7 @@ function buildBackupsPanel() {
   if (!list.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-msg';
-    empty.textContent = FIREBASE_ENABLED
-      ? 'Todavía no hay respaldos guardados — van a ir apareciendo acá cada vez que pvpx o admin usen "⬇ Exportar todo", desde cualquier dispositivo.'
-      : 'Todavía no hay respaldos guardados — van a ir apareciendo acá cada vez que pvpx o admin usen "⬇ Exportar todo" en este navegador.';
+    empty.textContent = 'Todavía no hay respaldos guardados — tocá "💾 Hacer respaldo" arriba para crear el primero.';
     wrap.appendChild(empty);
     return wrap;
   }
@@ -14841,14 +14610,29 @@ function buildBackupsPanel() {
     const userLabel = AUTH_USERS[b.user] ? AUTH_USERS[b.user].label : b.user;
     row.innerHTML = `
       <div class="backup-row-main">
+        <input type="text" class="backup-name-input" placeholder="🕒 ${fecha}" value="${escapeHtmlAttr(b.name || '')}" title="Tocá para ponerle nombre a este respaldo">
         <div class="backup-row-date">🕒 ${fecha}</div>
         <div class="backup-row-meta">👤 ${userLabel} · 🏰 ${b.guildName} · ${sizeKb} KB</div>
       </div>
       <div class="backup-row-actions">
+        <button type="button" class="small primary backupLoadBtn" title="Restaura este respaldo ahora mismo, sin bajar ni subir ningún archivo">📥 Cargar</button>
         <button type="button" class="small ghost backupDlBtn">⬇ Descargar</button>
         <button type="button" class="small ghost backupDelBtn" title="Quitar del historial">🗑</button>
       </div>
     `;
+    const nameInput = row.querySelector('.backup-name-input');
+    const commitName = () => {
+      const nv = nameInput.value.trim();
+      if (nv === (b.name || '')) return;
+      b.name = nv;
+      updateBackupName(b.id, nv);
+    };
+    nameInput.addEventListener('blur', commitName);
+    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
+    row.querySelector('.backupLoadBtn').onclick = () => {
+      if (!confirm(`¿Cargar "${b.name || fecha}"? Tus builds y habilidades actuales se conservan (las del respaldo se SUMAN), pero el Balance y el nombre del gremio se reemplazan por los del respaldo.`)) return;
+      loadBackupIntoState(b.content);
+    };
     row.querySelector('.backupDlBtn').onclick = () => {
       const fechaArchivo = d.toISOString().slice(0, 10);
       const guildSafe = (b.guildName || 'gremio').replace(/[^a-z0-9áéíóúñ_-]+/gi, '_');
@@ -15313,14 +15097,32 @@ function scheduleSyncPush() {
    queda frenado por syncReady — ver el comentario ahí arriba. De ahí en
    más, cualquier cambio que llegue de OTRO dispositivo se aplica en vivo
    sin recargar la página, mergeado registro por registro (ver
-   applyRemoteState/mergeCollection). */
+   applyRemoteState/mergeCollection).
+
+   OJO — esto es justo lo que hacía que "se resetearan las builds" al abrir
+   en otra PC/red: si el SDK de Firebase (los <script defer> de arriba)
+   todavía no había terminado de cargar en el instante exacto en que corre
+   DOMContentLoaded (una red lenta, un CDN con hiccup, un firewall que
+   tarda en dejarlo pasar), `getFirebaseDb()` devolvía null UNA vez acá y
+   la función se rendía para siempre en esa pestaña — jamás se reintentaba,
+   así que esa sesión quedaba 100% local y en los hechos se "olvidaba" de
+   todas las builds reales del gremio sin avisar nada más que con el
+   chiquito indicador del header. Ahora, si falla, se reintenta solo cada
+   par de segundos hasta que conecta. */
+let firebaseSyncRetryTimer = null;
+let firebaseSyncErrorMsg = null; // null = sin error; texto = motivo a mostrar en la insignia
 function initFirebaseSync() {
   if (!FIREBASE_ENABLED || syncListenerAttached) return;
   const db = getFirebaseDb();
-  if (!db) return;
+  if (!db) {
+    clearTimeout(firebaseSyncRetryTimer);
+    firebaseSyncRetryTimer = setTimeout(initFirebaseSync, 2500);
+    return;
+  }
   syncListenerAttached = true;
   let first = true;
   db.ref('guildState').on('value', (snap) => {
+    firebaseSyncErrorMsg = null;
     const data = snap.val();
     if (first) {
       first = false;
@@ -15332,6 +15134,19 @@ function initFirebaseSync() {
     applyRemoteState(data, false);
   }, (err) => {
     console.error('Sincronización con Firebase interrumpida:', err);
+    // PERMISSION_DENIED es el caso más importante de detectar: pasa cuando
+    // las reglas de seguridad de la base de datos no dejan leer/escribir
+    // (por ejemplo, las reglas de "modo prueba" por defecto de Firebase,
+    // que EXPIRAN solas a los 30 días de creado el proyecto). Cuando esto
+    // pasa, TODOS los dispositivos dejan de sincronizar de golpe y sin
+    // aviso — cada uno se queda viendo nada más que su propia copia local,
+    // que es exactamente lo que se siente como "builds reseteadas" al
+    // pasar de una PC a otra. Ver updateSyncBadge() para el mensaje que se
+    // le muestra al usuario.
+    firebaseSyncErrorMsg = (err && err.code === 'PERMISSION_DENIED')
+      ? '⛔ Sin permiso para leer la base de datos — revisá las reglas de seguridad en Firebase (pueden haber expirado). Mientras tanto, esta sesión NO está sincronizada: lo que hagas acá no se comparte con el resto del gremio.'
+      : 'No se pudo mantener la conexión con la base de datos en vivo.';
+    updateSyncBadge();
   });
 }
 
@@ -15340,6 +15155,17 @@ function initFirebaseSync() {
    compartidos en vivo o la versión 100% local de siempre. Usa el path
    especial .info/connected de Realtime Database, que Firebase actualiza
    solo con el estado real de la conexión de este dispositivo. */
+let syncBadgeConnectedListenerAttached = false;
+function updateSyncBadge() {
+  const badge = document.getElementById('syncBadge');
+  if (!badge || !FIREBASE_ENABLED) return;
+  if (firebaseSyncErrorMsg) {
+    badge.textContent = firebaseSyncErrorMsg.startsWith('⛔') ? '⛔ Sin permiso' : '⚠️ Sin conexión';
+    badge.title = firebaseSyncErrorMsg;
+    badge.classList.remove('offline');
+    badge.classList.add('error');
+  }
+}
 function initSyncBadge() {
   const badge = document.getElementById('syncBadge');
   if (!badge) return;
@@ -15347,21 +15173,29 @@ function initSyncBadge() {
   badge.hidden = false;
   const db = getFirebaseDb();
   if (!db) {
-    // FIREBASE_CONFIG está completo pero no se pudo inicializar (el script
-    // de Firebase no cargó — CDN bloqueado, sin internet, etc.). Se avisa
-    // en vez de esconder el indicador en silencio: la herramienta sigue
-    // funcionando en modo local mientras tanto.
+    // FIREBASE_CONFIG está completo pero no se pudo inicializar todavía
+    // (el script de Firebase no cargó — CDN bloqueado, red lenta, sin
+    // internet, etc.). Se avisa en vez de esconder el indicador en
+    // silencio, y se reintenta solo — igual que initFirebaseSync() — en
+    // vez de dejar la insignia pegada en "Sin conexión" para siempre
+    // aunque la red se recupere un rato después.
     badge.textContent = '⚠️ Sin conexión';
-    badge.title = 'No se pudo conectar con la base de datos en vivo — la herramienta sigue funcionando en modo local mientras tanto.';
+    badge.title = 'No se pudo conectar con la base de datos en vivo — la herramienta sigue funcionando en modo local mientras tanto. Reintentando solo...';
     badge.classList.add('offline');
+    setTimeout(initSyncBadge, 2500);
     return;
   }
+  if (firebaseSyncErrorMsg) { updateSyncBadge(); return; }
+  if (syncBadgeConnectedListenerAttached) return;
+  syncBadgeConnectedListenerAttached = true;
   db.ref('.info/connected').on('value', (snap) => {
+    if (firebaseSyncErrorMsg) { updateSyncBadge(); return; }
     const connected = snap.val() === true;
     badge.textContent = connected ? '🔄 En vivo' : '⏳ Conectando...';
     badge.title = connected
       ? 'Sincronizado en vivo con el resto del gremio (Firebase)'
       : 'Sin conexión con la base de datos en vivo — mostrando la última versión conocida';
+    badge.classList.remove('error');
     badge.classList.toggle('offline', !connected);
   });
 }
@@ -16380,42 +16214,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     openInvitationModal();
   };
-  document.getElementById('btnExport').onclick = () => {
-    const guild = (state.guildName || 'gremio').replace(/[^a-z0-9áéíóúñ_-]+/gi, '_');
-    const fecha = new Date().toISOString().slice(0, 10);
-    const content = serializeState();
-    downloadFile(`pvpx_respaldo_${guild}_${fecha}.json`, content, 'application/json');
-    // Con sesión iniciada, además de bajar el archivo se guarda una copia
-    // en el historial local de "Respaldos" (solo admin lo ve) — sin
-    // sesión, exportar sigue funcionando igual (es una acción de lectura,
-    // no de edición) pero no queda copia en ese historial.
-    if (isEditor()) saveBackupSnapshot(content);
-    showToast('Respaldo completo exportado ✔');
-  };
-  document.getElementById('btnImportTrigger').onclick = () => {
-    if (!requireEditor('importar un respaldo')) return;
-    document.getElementById('btnImport').click();
-  };
-  document.getElementById('btnImport').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!requireEditor('importar un respaldo')) { e.target.value = ''; return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        applyState(data);
-        updateGuildBranding();
-        renderAll();
-        showToast('Respaldo importado ✔ — todo tu progreso quedó cargado');
-      } catch (err) {
-        showToast('Error al leer el archivo ✕');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  });
-
   /* ---------------- Menú de acciones en celular (hamburguesa) ----------------
      En desktop el .toolbar se ve entero en el header. En celular no entra
      (quedaba en 2-3 filas de botones apretados) — se colapsa detrás de un
